@@ -26,7 +26,6 @@ ansible
 part 1 validation of app
 DNS cutover to paludification_toad public IP
 PKI adoption (certbot, etc)
-ansible
 part 2 validation of app
 live your life for 6+ months
 repeat
