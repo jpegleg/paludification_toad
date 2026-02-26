@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+CMDZ="$1"
+PROCNM="morpho-server-template"
+PROCNMCMD="'cd /home/crab/template && MORPHOP=changeme && /home/crab/template/$PROCNM'"
+
+skill() {
+  foundit=$(pgrep $PROCNM)
+  if [ -z $foundit ]; then
+      pgrep $PROCNM | xargs kill
+  done
+  unset foundit
+  foundit=$(pgrep $PROCNM)
+  if [ -z $foundit ]; then
+      pgrep $PROCNM | xargs kill -9
+  done
+}
+
+if [ "$CMDZ" == "start" ]; then  
+  pgrep $PROCNM || su - m crab -c $PROCNMCMD &
+fi
+if [ "$CMDZ" == "restart" ]; then
+  skill && su - m crab -c $PROCNMCMD &
+fi
+if [ "$CMDZ" == "stop" ]; then
+  skill 
+fi
