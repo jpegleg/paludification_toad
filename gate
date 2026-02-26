@@ -1,0 +1,26 @@
+#!/usr/bin/env sh
+CMDZ="$1"
+PROCNM="kiagateway"
+PROCNMCMD="/opt/kiagateway/bin/kiagateway /opt/kiagateway/etc/config.toml >> /var/log/kiagateway.log 2>&1"
+
+skill() {
+  foundit=$(pgrep $PROCNM)
+  if [ -z $foundit ]; then
+      pgrep $PROCNM | xargs kill
+  done
+  unset foundit
+  foundit=$(pgrep $PROCNM)
+  if [ -z $foundit ]; then
+      pgrep $PROCNM | xargs kill -9
+  done
+}
+
+if [ "$CMDZ" == "start" ]; then  
+  pgrep $PROCNM || $PROCNMCMD &
+fi
+if [ "$CMDZ" == "restart" ]; then
+  skill && $PROCNMCM &
+fi
+if [ "$CMDZ" == "stop" ]; then
+  skill 
+fi
