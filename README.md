@@ -3,7 +3,7 @@
 Paludification toad is a template/recipe for an OpenBSD web server that uses Actix web servers, leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation.
 The toad also uses the in-kernel pf firewall and a version of the `kiagateway` service.
 
-The purpose of paludification_toad is to make the smallest, lightest, most secure, self contained, internet exposed web server that still has a complete unix-based operating system administrated with the SSH protocol.
+The purpose of paludification_toad is to make the smallest, lightest, most secure, self contained, durable web server that still has a complete unix-based operating system administrated with the SSH protocol.
 
 __paludification__ is a geomorphology term for the build up of plant matter and the correct conditions to create peat bogs on previously dry land.
 
