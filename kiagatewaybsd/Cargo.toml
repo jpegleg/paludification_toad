@@ -1,0 +1,21 @@
+[package]
+name = "kiagatewaybsd"
+version = "0.1.0"
+edition = "2024"
+authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
+license = "MIT"
+description = "a light and performant TCP domain-based traffic controller"
+homepage = "https://carefuldata.com"
+repository = "https://github.com/jpegleg/kiagateway"
+readme = "README.md"
+categories = ["network-programming"]
+keywords = ["proxy-routing", "gateway", "domain-based-routing", "tls-passthrough", "proxy"]
+
+[dependencies]
+tokio = { version = "1.49.0", features = ["net", "rt-multi-thread", "io-util", "time", "macros"] }
+chrono = "0.4.44"
+uuid = { version = "1.21.0", features = ["v4"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1.0.3"
+unveil = "0.3.2"
+pledge = "0.4.2"
