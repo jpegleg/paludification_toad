@@ -1,0 +1,23 @@
+[package]
+name = "morphobsd"
+version = "0.1.1"
+edition = "2021"
+
+[[bin]]
+name = "morpho-server"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = { version = "4", features = ["openssl"] }
+openssl = { version = "0.10.75", features = ["v110"] }
+actix-web-lab = "0.17"
+actix-files = "0.6"
+unveil = "0.3.2"
+pledge = "0.4.2"
+log = "0.4"
+env_logger = "0.11"
+eyre = { version = "0.6", default-features = false, features = ["auto-install", "track-caller"] }
+color-eyre = "0.6"
+notify = "8"
+tokio = { version = "1.49.0", features = ["time", "rt", "macros"] }
+chrono = "0.4"
