@@ -1,17 +1,16 @@
 #!/usr/bin/env sh
 CMDZ="$1"
 PROCNM="morpho-server-template"
-PROCNMCMD="'cd /home/crab/template && MORPHOP=changeme && /home/crab/template/$PROCNM'"
 
 skillo() {
   pkill $PROCNM && pgrep $PROCNM && pkill -9 $PROCNM
 }
 
 if [ "$CMDZ" == "start" ]; then  
-  pgrep $PROCNM || su - m crab -c $PROCNMCMD &
+  pgrep $PROCNM || su - crab -c 'cd /home/crab/template && MORPHOP=changeme && /home/crab/template/$PROCNM' &
 fi
 if [ "$CMDZ" == "restart" ]; then
-  skillo && su - m crab -c $PROCNMCMD &
+  skillo && su - crab -c 'cd /home/crab/template && MORPHOP=changeme && /home/crab/template/$PROCNM' &
 fi
 if [ "$CMDZ" == "stop" ]; then
   skillo
