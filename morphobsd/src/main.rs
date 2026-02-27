@@ -4,8 +4,9 @@ use std::io::Read;
 use std::env;
 
 use actix_web::{
-    App, HttpRequest, HttpResponse, HttpServer, http::header::ContentType, middleware, web,
+    App, get, Responder, HttpRequest, HttpResponse, HttpServer, http::header::ContentType, middleware, web,
 };
+use actix_files::{Files, NamedFile};
 use log::debug;
 use notify::{Event, RecursiveMode, Watcher as _};
 use openssl::{
@@ -23,14 +24,10 @@ use actix_web_lab::header::StrictTransportSecurity;
 #[derive(Debug)]
 struct TlsUpdated;
 
+#[get("/")]
 async fn index(req: HttpRequest) -> HttpResponse {
     debug!("{req:?}");
-
-    HttpResponse::Ok().content_type(ContentType::html()).body(
-        "<!DOCTYPE html><html><body>\
-            <p>Morphobsd Template</p>\
-        </body></html>",
-    )
+    NamedFile::open_async("./static/index.html").await
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -82,12 +79,12 @@ async fn main() -> eyre::Result<()> {
     log::info!("morphobsd initialized at {} >>> starting HTTPS server on port 3443 using openssl (libressl)", readi);
 
     loop {
-
+        
         let mut builder = SslAcceptor::mozilla_modern_v5(SslMethod::tls()).unwrap();
 
         builder.set_private_key(&load_encrypted_private_key()).unwrap();
         builder.set_certificate_chain_file("/opt/morpho/cert.pem").unwrap();
-
+        
         let mut server = HttpServer::new(|| {
             App::new()
               .wrap(RedirectHttps::default())
@@ -96,7 +93,8 @@ async fn main() -> eyre::Result<()> {
               .wrap(middleware::DefaultHeaders::new().add(("x-frame-options", "SAMEORIGIN")))
               .wrap(middleware::DefaultHeaders::new().add(("x-xss-protection", "1; mode=block")))
               .wrap(middleware::Logger::new("%{txid}e %a -> HTTP %s %r size: %b server-time: %T %{Referer}i %{User-Agent}i"))
-              .service(web::resource("/").to(index))
+              .service(index)
+              .service(Files::new("/", "static"))
         })
         .workers(2)
         .bind_openssl("0.0.0.0:3443", builder)?
