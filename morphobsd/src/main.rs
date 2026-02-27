@@ -98,6 +98,7 @@ async fn main() -> eyre::Result<()> {
         })
         .workers(2)
         .bind_openssl("0.0.0.0:3443", builder)?
+        .bind("0.0.0.0:8080")?
         .run();
 
         let server_hnd = server.handle();
