@@ -76,7 +76,7 @@ The Go crypto library is the source of the cryptographic support for PQC, no cry
 
 ## Installation
 
-Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpi)e.
+Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpi).
 
 The container image is very small and hardened, with only a single statically linked Go binary added to a minimized container "scratch" image.
 
