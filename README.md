@@ -1,6 +1,6 @@
 # paludification_toad 🐸
 
-Paludification toad is a template/recipe for an OpenBSD web server that uses Actix web servers, leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation.
+Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers, Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation.
 The toad also uses the in-kernel pf firewall and a version of the `kiagateway` service.
 
 The purpose of paludification_toad is to make the smallest, lightest, most secure, self contained, durable web server that still has a complete unix-based operating system administrated with the SSH protocol.
@@ -15,6 +15,8 @@ The creation of this project was based on some undesirable results in the latest
 as well as the breakthroughs of [kiagateway](https://github.com/jpegleg/kiagateway).
 
 This project forks both kiagateway and project-bobcat, customizing for a single server build, and with some more up to date software versions.
+
+The use of Actix was replaced by `kiamagpie` to support ML-KEM hybrid TLS and ease of multiplexing. The `kiamagpie` is trying to adopt QUIC, but the implementation there is currently unverified.
 
 ## The flow of the toad
 
