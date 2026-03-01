@@ -55,7 +55,9 @@ kiamagpie:
 
 The config routes different domains to different listeners which it creates, serving the web content at the web_content path configured.
 
-QUIC is a work in progress, consider it unverified.
+QUIC is a work in progress, consider it unverified and incomplete. It is safe to disable it for now.
+
+Note that only ECDSA NIST curvs and x25519 identity certificates are supported in version 0.1.0. Support for RSA idenity is TBD.
 
 Hybrid PQC with ML-KEM for key exchange is verified and central to the design.
 
@@ -74,7 +76,7 @@ The Go crypto library is the source of the cryptographic support for PQC, no cry
 
 ## Installation
 
-Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpie.
+Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpi)e.
 
 The container image is very small and hardened, with only a single statically linked Go binary added to a minimized container "scratch" image.
 
