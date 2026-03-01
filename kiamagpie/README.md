@@ -92,8 +92,8 @@ Note that only ECDSA NIST curves, RSA, and ed25519 are the support server identi
 
 Hybrid PQC with ML-KEM for key exchange is verified and central to the design.
 
-In the 0.1.0 version the route rewrites were not configurable in the YAML and `/` routes to the file `index.html` in the web root of `web_content`. To code other routes, edit the `main.go` and recompile it.
-There are some example routes in the default build for `/art`, `/shows`, `/music`, which each route to art.html and so on. And also `/about`. which routes to index.html as well.
+In the 0.1.0 version the route rewrites were not configurable in the YAML and `/` routes to the file `index.html` in the web root of `web_content`. In that version we had to edit the `main.go` and recompile it to configure more routes.
+There are some example routes in the 0.1.0 default build for `/art`, `/shows`, `/music`, which each route to art.html and so on. And also `/about`. which routes to index.html as well.
 
 As of 0.1.1 and onward, the route rewrites are configured in the YAML per domain, there are no default route rewrites anymore.
 
