@@ -55,9 +55,9 @@ kiamagpie:
 
 The config routes different domains to different listeners which it creates, serving the web content at the web_content path configured.
 
-QUIC is a work in progress, consider it unverified and incomplete. It is safe to disable it for now.
+QUIC is a work in progress, consider it incomplete and not ready for serving files in version 0.1.0. It is safe to disable quic for now by setting the config value to False.
 
-Note that only ECDSA NIST curvs and x25519 identity certificates are supported in version 0.1.0. Support for RSA idenity is TBD.
+Note that only ECDSA NIST curves and x25519 identity certificates are supported in version 0.1.0. Support for RSA idenity is TBD.
 
 Hybrid PQC with ML-KEM for key exchange is verified and central to the design.
 
