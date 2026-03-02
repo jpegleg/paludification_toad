@@ -20,7 +20,6 @@ import (
         "os"
         "path"
         "path/filepath"
-        "runtime"
         "strings"
         "sync"
         "sync/atomic"
@@ -29,7 +28,6 @@ import (
         "github.com/fsnotify/fsnotify"
         "github.com/google/uuid"
         "github.com/quic-go/quic-go/http3"
-        "golang.org/x/sys/unix"
         "gopkg.in/yaml.v3"
 )
 
@@ -427,7 +425,7 @@ func main() {
                 "event":   "server_start",
                 "version": kiamagpieVersion,
         })
-        
+
         data, err := os.ReadFile("domains.yaml")
         if err != nil {
                 logError(uuid.New(), "config_read_failed", err, map[string]interface{}{"path": "domains.yaml"})
@@ -1477,23 +1475,6 @@ func extractRemoteFromErrorLog(msg string) string {
                 return strings.TrimSpace(rest[:end])
         }
         return strings.TrimSpace(rest)
-}
-
-func availableRAMBytes() int64 {
-        if runtime.GOOS == "linux" {
-                var info unix.Sysinfo_t
-                if err := unix.Sysinfo(&info); err == nil {
-                        unit := int64(info.Unit)
-                        if unit <= 0 {
-                                unit = 1
-                        }
-                        free := int64(info.Freeram) * unit
-                        if free > 0 {
-                                return free
-                        }
-                }
-        }
-        return defaultAvailRAMBytes
 }
 
 func mapBytes(m map[string][]byte) int {
