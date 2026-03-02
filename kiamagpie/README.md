@@ -12,7 +12,8 @@ kiamagpie:
   host_header_inspection: True
   strict_transport_security: True
   redirect_https: False
-  quic: False
+  ram_limit_percent: 50
+  quic: True
   tls: True
   http: True
   cache_age_seconds: 60
@@ -28,7 +29,7 @@ kiamagpie:
     - "127.0.0.1:3243"
     - cert: /opt/local/TEMPLATE/cert.pem
     - key: /opt/local/TEMPLATE/key.pem
-    - web_content: /srv/persist/TEMPLATE/
+    - web_content: https://example.com
       rewrites:
         "/": "/index.html"
   domains_tls:
@@ -97,6 +98,12 @@ There are some example routes in the 0.1.0 default build for `/art`, `/shows`, `
 
 As of 0.1.1 and onward, the route rewrites are configured in the YAML per domain, there are no default route rewrites anymore.
 
+As of 0.1.2 and onward, security headers for TLS, and HSTS of "max-age=63072000; includeSubDomains; preload" is avilable bolean with the `strict_transport_security` config option.
+
+As of 0.1.2 and onward, web content can be loaded from HTTPS network sources instead of from the filesystem. This way the web content of a given domain can be from an S3 bucket or whatnot, and it is stored locally in RAM as much as possible with the cache. To use this feature start the path of web_content with "https", see the example config at the top of this document.
+
+As of 0.1.2 and onward, we can limit the RAM use of the files cache in the config option `ram_limit_percent` as a float. If we set 50, then we use up to 50% of available RAM for the file cache.
+
 ## Why use kiamagpie
 
 If you need a compact and purpose built web server for handling multiple websites, kiamagpie is built for that.
@@ -113,7 +120,7 @@ If you need event correlation across logs and web interactions as correlated JSO
 
 ## Installation
 
-Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpi).
+Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpie).
 
 The container image is very small and hardened, with only a single statically linked Go binary added to a minimized container "scratch" image.
 
@@ -131,13 +138,13 @@ podman run -d -it --network=host -v /opt/local/:/opt/local/ \
                                  carefuldata/kiamagpie
 ```
 
-The mount points for all of the files are configurable in the YAML, except for `domains.yaml` which must be in the working dorectory of kiamagpie, so in the container version `/`.
+The mount points for all of the files are configurable in the YAML, except for `domains.yaml` which must be in the working directory of kiamagpie, so in the container version `/`.
 
 Kiamagpie can listen on any TCP or UDP port. UDP is for QUIC protocol only.
 
-Kiagmagpie can be compiled from source or installed from precompiled release binaries via github.
+Kiamagpie can also be compiled from source or installed from any precompiled release binaries via github.
 
-Kiamagpie works well in Kubernetes, too, just specify the YAML config in the manifest or mount it.
+Kiamagpie works well in Kubernetes, too, just specify the YAML config in the manifest as a configmap or secret, or mount it.
 
 Kiamagpie is a great alternative to Kubernetes at small scale, when there isn't the need to have many services.
 It doesn't replace Kubernetes, but it does the things we need for the web at small and medium scale:
@@ -145,7 +152,9 @@ It doesn't replace Kubernetes, but it does the things we need for the web at sma
 - serve web content
 - use best available network protocols
 - simple and reliable operations
+- solid audit logging and event data (as of v0.1.1 and onward)
 
+  
 Kiamagpie is easier to use and generally more secure and cloud native than traditional web servers like NGINX or Apache HTTPD.
 
 Kiamagpie goes well with [kiagateway](https://github.com/jpegleg/kiagateway) and [kiaproxy](https://github.com/jpegleg/kiaproxy/).
