@@ -16,8 +16,11 @@ import (
         "mime"
         "net"
         "net/http"
+        "net/url"
         "os"
+        "path"
         "path/filepath"
+        "runtime"
         "strings"
         "sync"
         "sync/atomic"
@@ -26,20 +29,37 @@ import (
         "github.com/fsnotify/fsnotify"
         "github.com/google/uuid"
         "github.com/quic-go/quic-go/http3"
+        "golang.org/x/sys/unix"
         "gopkg.in/yaml.v3"
+)
+
+const magpieVersion = "0.0.0"
+
+const (
+        safeMaxRAMLimitBytes = int64(2 * 1024 * 1024 * 1024)
+        safeMaxRAMPercent    = 80.0
+
+        defaultRAMPercentFloat = 10.0
+        defaultRAMPercentInt   = int64(10)
+        defaultAvailRAMBytes   = int64(512 * 1024 * 1024)
+
+        hstsHeaderValue = "max-age=63072000; includeSubDomains; preload"
+
+        remoteFetchTimeout = 10 * time.Second
 )
 
 type MagpieConfig struct {
         Magpie struct {
-                QUICEnabled   bool        `yaml:"quic"`
-                TLSEnabled    bool        `yaml:"tls"`
-                HTTPEnabled   bool        `yaml:"http"`
-                HSTS          bool        `yaml:"strict_transport_security"`
-                RedirectHTTPS bool        `yaml:"redirect_https"`
-                CacheAgeSecs  int         `yaml:"cache_age_seconds"`
-                DomainsTLS    interface{} `yaml:"domains_tls"`
-                DomainsQUIC   interface{} `yaml:"domains_quic"`
-                DomainsHTTP   interface{} `yaml:"domains_http"`
+                QUICEnabled     bool        `yaml:"quic"`
+                TLSEnabled      bool        `yaml:"tls"`
+                HTTPEnabled     bool        `yaml:"http"`
+                HSTS            bool        `yaml:"strict_transport_security"`
+                RedirectHTTPS   bool        `yaml:"redirect_https"`
+                CacheAgeSecs    int         `yaml:"cache_age_seconds"`
+                RAMLimitPercent float64     `yaml:"ram_limit_percent"`
+                DomainsTLS      interface{} `yaml:"domains_tls"`
+                DomainsQUIC     interface{} `yaml:"domains_quic"`
+                DomainsHTTP     interface{} `yaml:"domains_http"`
         } `yaml:"kiamagpie"`
 }
 
@@ -49,23 +69,19 @@ type RewriteRule struct {
 }
 
 type VirtualHost struct {
-        Domain   string
-        Addr     string
-        CertPath string
-        KeyPath  string
-        WebRoot  string
-        Rewrites []RewriteRule
+        Domain          string
+        Addr            string
+        CertPath        string
+        KeyPath         string
+        WebRoot         string
+        Rewrites        []RewriteRule
+        TransportFlavor string
 }
 
 type ParsedHosts struct {
         TLS  []VirtualHost
         QUIC []VirtualHost
         HTTP []VirtualHost
-}
-
-type fileCache struct {
-        sync.RWMutex
-        Data map[string]map[string][]byte
 }
 
 type certStore struct {
@@ -194,14 +210,200 @@ func (s *quicSessionStore) evictLocked(now time.Time) {
         }
 }
 
+type cacheSizer struct {
+        mu         sync.Mutex
+        totalBytes int64
+        byHost     map[string]int64
+        limitBytes int64
+        hostErr    map[string]string
+}
+
+func (c *cacheSizer) setLimit(limit int64) {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+        c.limitBytes = limit
+}
+
+func (c *cacheSizer) snapshot() (total int64, limit int64) {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+        return c.totalBytes, c.limitBytes
+}
+
+func (c *cacheSizer) getHostErr(host string) (string, bool) {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+        e, ok := c.hostErr[host]
+        return e, ok
+}
+
+func (c *cacheSizer) clearHostErr(host string) {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+        delete(c.hostErr, host)
+}
+
+func (c *cacheSizer) setHostTotal(host string, newBytes int64) error {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+
+        old := c.byHost[host]
+        nextTotal := c.totalBytes - old + newBytes
+        if c.limitBytes > 0 && nextTotal > c.limitBytes {
+                c.hostErr[host] = "ram_limit_exceeded"
+                return errors.New("ram cache limit exceeded")
+        }
+
+        c.totalBytes = nextTotal
+        c.byHost[host] = newBytes
+        delete(c.hostErr, host)
+        return nil
+}
+
+func (c *cacheSizer) tryAdd(host string, delta int64) bool {
+        c.mu.Lock()
+        defer c.mu.Unlock()
+
+        nextTotal := c.totalBytes + delta
+        if c.limitBytes > 0 && nextTotal > c.limitBytes {
+                return false
+        }
+        c.totalBytes = nextTotal
+        c.byHost[host] = c.byHost[host] + delta
+        return true
+}
+
+func (c *cacheSizer) sub(host string, delta int64) {
+        if delta <= 0 {
+                return
+        }
+        c.mu.Lock()
+        defer c.mu.Unlock()
+        c.totalBytes -= delta
+        if c.totalBytes < 0 {
+                c.totalBytes = 0
+        }
+        c.byHost[host] = c.byHost[host] - delta
+        if c.byHost[host] < 0 {
+                c.byHost[host] = 0
+        }
+}
+
+type localCache struct {
+        sync.RWMutex
+        Data map[string]map[string][]byte
+}
+
+type remoteEntry struct {
+        Data     []byte
+        Expiry   time.Time
+        Size     int64
+        MimeType string
+}
+
+type remoteCache struct {
+        mu   sync.RWMutex
+        data map[string]map[string]remoteEntry
+}
+
+func (rc *remoteCache) get(host, p string) (remoteEntry, bool) {
+        rc.mu.RLock()
+        m := rc.data[host]
+        if m == nil {
+                rc.mu.RUnlock()
+                return remoteEntry{}, false
+        }
+        e, ok := m[p]
+        rc.mu.RUnlock()
+        if !ok {
+                return remoteEntry{}, false
+        }
+        if !e.Expiry.IsZero() && time.Now().After(e.Expiry) {
+                rc.mu.Lock()
+                m2 := rc.data[host]
+                if m2 != nil {
+                        if e2, ok2 := m2[p]; ok2 {
+                                delete(m2, p)
+                                rc.mu.Unlock()
+                                memGuard.sub(host, e2.Size)
+                                return remoteEntry{}, false
+                        }
+                }
+                rc.mu.Unlock()
+                return remoteEntry{}, false
+        }
+        return e, true
+}
+
+func (rc *remoteCache) set(host, p string, e remoteEntry) bool {
+        rc.mu.Lock()
+        defer rc.mu.Unlock()
+
+        if rc.data[host] == nil {
+                rc.data[host] = map[string]remoteEntry{}
+        }
+
+        old, had := rc.data[host][p]
+        if had {
+                memGuard.sub(host, old.Size)
+        }
+
+        if !memGuard.tryAdd(host, e.Size) {
+                if had {
+                        rc.data[host][p] = old
+                        memGuard.tryAdd(host, old.Size)
+                } else {
+                        delete(rc.data[host], p)
+                        if len(rc.data[host]) == 0 {
+                                delete(rc.data, host)
+                        }
+                }
+                return false
+        }
+
+        rc.data[host][p] = e
+        return true
+}
+
+func (rc *remoteCache) purgeExpired(host string) {
+        now := time.Now()
+        var reclaimed int64
+        rc.mu.Lock()
+        m := rc.data[host]
+        if m == nil {
+                rc.mu.Unlock()
+                return
+        }
+        for k, v := range m {
+                if !v.Expiry.IsZero() && now.After(v.Expiry) {
+                        reclaimed += v.Size
+                        delete(m, k)
+                }
+        }
+        if len(m) == 0 {
+                delete(rc.data, host)
+        }
+        rc.mu.Unlock()
+        if reclaimed > 0 {
+                memGuard.sub(host, reclaimed)
+        }
+}
+
 var (
-        config  *MagpieConfig
-        cache   = &fileCache{Data: map[string]map[string][]byte{}}
+        magpieConfig *MagpieConfig
+
         watcher *fsnotify.Watcher
         certMap = sync.Map{}
 
         rewriteMu      sync.RWMutex
         rewritesByHost = map[string][]RewriteRule{}
+
+        localFiles = &localCache{Data: map[string]map[string][]byte{}}
+
+        remoteFiles = &remoteCache{data: map[string]map[string]remoteEntry{}}
+
+        remoteOriginMu sync.RWMutex
+        remoteOrigin   = map[string]*url.URL{}
 
         tcpConnIDs = &connIDStore{m: map[string]uuid.UUID{}}
 
@@ -210,14 +412,22 @@ var (
                 maxSize: 10000,
                 ttl:     10 * time.Minute,
         }
+
+        memGuard = &cacheSizer{
+                byHost:  map[string]int64{},
+                hostErr: map[string]string{},
+        }
+
+        httpClient *http.Client
 )
 
 func main() {
-        const kiamagpieVersion = "0.1.1"
+        const kiamagpieVersion = "0.1.2"
         logEvent(uuid.New(), map[string]interface{}{
                 "event":   "server_start",
                 "version": kiamagpieVersion,
         })
+        
         data, err := os.ReadFile("domains.yaml")
         if err != nil {
                 logError(uuid.New(), "config_read_failed", err, map[string]interface{}{"path": "domains.yaml"})
@@ -229,7 +439,36 @@ func main() {
                 logError(uuid.New(), "config_unmarshal_failed", err, nil)
                 os.Exit(1)
         }
-        config = &cfg
+        magpieConfig = &cfg
+
+        avail := availableRAMBytes()
+
+        percent := magpieConfig.Magpie.RAMLimitPercent
+        if percent <= 0 {
+                percent = defaultRAMPercentFloat
+        }
+        if percent > safeMaxRAMPercent {
+                percent = safeMaxRAMPercent
+        }
+
+        limit := int64(float64(avail) * (percent / 100.0))
+        if limit <= 0 {
+                limit = (defaultAvailRAMBytes * defaultRAMPercentInt) / 100
+        }
+        if limit > safeMaxRAMLimitBytes {
+                limit = safeMaxRAMLimitBytes
+        }
+        memGuard.setLimit(limit)
+
+        httpClient = strictHTTPClient()
+
+        logEvent(uuid.New(), map[string]interface{}{
+                "event":           "server_start",
+                "version":         magpieVersion,
+                "ram_limit_bytes": limit,
+                "ram_percent":     percent,
+                "ram_avail_bytes": avail,
+        })
 
         watcher, err = fsnotify.NewWatcher()
         if err != nil {
@@ -240,7 +479,7 @@ func main() {
 
         go watchLoop()
 
-        hosts := parseVHosts(config)
+        hosts := parseVHosts(magpieConfig)
 
         rewriteMu.Lock()
         for _, vh := range append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...) {
@@ -250,11 +489,12 @@ func main() {
         }
         rewriteMu.Unlock()
 
-        reloadAllFiles(hosts)
+        indexRemoteOrigins(hosts)
+        reloadAllLocalFiles(hosts)
 
         var wg sync.WaitGroup
 
-        if config.Magpie.HTTPEnabled {
+        if magpieConfig.Magpie.HTTPEnabled {
                 for _, h := range hosts.HTTP {
                         wg.Add(1)
                         go func(v VirtualHost) {
@@ -264,7 +504,7 @@ func main() {
                 }
         }
 
-        if config.Magpie.TLSEnabled {
+        if magpieConfig.Magpie.TLSEnabled {
                 for _, h := range hosts.TLS {
                         wg.Add(1)
                         go func(v VirtualHost) {
@@ -274,7 +514,7 @@ func main() {
                 }
         }
 
-        if config.Magpie.QUICEnabled {
+        if magpieConfig.Magpie.QUICEnabled {
                 for _, h := range hosts.QUIC {
                         wg.Add(1)
                         go func(v VirtualHost) {
@@ -289,7 +529,7 @@ func main() {
 
 func parseVHosts(cfg *MagpieConfig) ParsedHosts {
         res := ParsedHosts{}
-        process := func(raw interface{}) []VirtualHost {
+        process := func(raw interface{}, flavor string) []VirtualHost {
                 list, ok := raw.([]interface{})
                 if !ok {
                         return nil
@@ -306,7 +546,7 @@ func parseVHosts(cfg *MagpieConfig) ParsedHosts {
                                         continue
                                 }
                                 addr, _ := arr[0].(string)
-                                vh := VirtualHost{Domain: domain, Addr: addr}
+                                vh := VirtualHost{Domain: domain, Addr: addr, TransportFlavor: flavor}
                                 for i := 1; i < len(arr); i++ {
                                         props, ok := arr[i].(map[string]interface{})
                                         if !ok {
@@ -324,7 +564,7 @@ func parseVHosts(cfg *MagpieConfig) ParsedHosts {
                                         }
                                         if v, ok := props["web_content"]; ok {
                                                 if s, ok := v.(string); ok {
-                                                        vh.WebRoot = s
+                                                        vh.WebRoot = strings.TrimSpace(s)
                                                 }
                                         }
                                         if v, ok := props["rewrites"]; ok {
@@ -342,10 +582,50 @@ func parseVHosts(cfg *MagpieConfig) ParsedHosts {
                 }
                 return out
         }
-        res.TLS = process(cfg.Magpie.DomainsTLS)
-        res.QUIC = process(cfg.Magpie.DomainsQUIC)
-        res.HTTP = process(cfg.Magpie.DomainsHTTP)
+        res.TLS = process(cfg.Magpie.DomainsTLS, "https")
+        res.QUIC = process(cfg.Magpie.DomainsQUIC, "quic")
+        res.HTTP = process(cfg.Magpie.DomainsHTTP, "http")
         return res
+}
+
+func indexRemoteOrigins(hosts ParsedHosts) {
+        all := append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...)
+        remoteOriginMu.Lock()
+        defer remoteOriginMu.Unlock()
+        for _, vh := range all {
+                if vh.WebRoot == "" {
+                        continue
+                }
+                if u, ok := parseHTTPSOrigin(vh.WebRoot); ok {
+                        remoteOrigin[vh.Domain] = u
+                }
+        }
+}
+
+func parseHTTPSOrigin(s string) (*url.URL, bool) {
+        if !strings.HasPrefix(strings.ToLower(s), "https://") {
+                return nil, false
+        }
+        u, err := url.Parse(s)
+        if err != nil || u == nil {
+                return nil, false
+        }
+        if u.Scheme != "https" || u.Host == "" {
+                return nil, false
+        }
+        u.Fragment = ""
+        if u.Path == "" {
+                u.Path = "/"
+        }
+        u.Path = strings.TrimSuffix(u.Path, "/") + "/"
+        return u, true
+}
+
+func getOriginForHost(host string) (*url.URL, bool) {
+        remoteOriginMu.RLock()
+        defer remoteOriginMu.RUnlock()
+        u, ok := remoteOrigin[host]
+        return u, ok
 }
 
 func watchLoop() {
@@ -389,6 +669,9 @@ func reloadCert(cs *certStore) {
 }
 
 func validateIdentity(cert tls.Certificate) error {
+        if len(cert.Certificate) == 0 {
+                return errors.New("empty certificate chain")
+        }
         leaf, err := x509.ParseCertificate(cert.Certificate[0])
         if err != nil {
                 return err
@@ -484,8 +767,7 @@ func tlsConfigForHost(vh VirtualHost) (*tls.Config, error) {
                         tls.CurveP384,
                         tls.CurveP521,
                 },
-                SessionTicketsDisabled:   true,
-                PreferServerCipherSuites: true,
+                SessionTicketsDisabled: true,
                 GetCertificate: func(chi *tls.ClientHelloInfo) (*tls.Certificate, error) {
                         id := uuid.New()
                         if chi != nil && chi.Conn != nil {
@@ -515,7 +797,7 @@ func startHTTP(vh VirtualHost) {
         jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:     vh.Addr,
-                Handler:  middleware(vh, mux),
+                Handler:  securityHeadersMiddleware(middleware(vh, mux)),
                 ErrorLog: log.New(jw, "", 0),
                 ConnContext: func(ctx context.Context, c net.Conn) context.Context {
                         key := connKey(c)
@@ -577,7 +859,7 @@ func startHTTPS(vh VirtualHost) {
         srv := &http.Server{
                 Addr:      vh.Addr,
                 TLSConfig: conf,
-                Handler:   middleware(vh, mux),
+                Handler:   securityHeadersMiddleware(middleware(vh, mux)),
                 ErrorLog:  log.New(jw, "", 0),
                 ConnContext: func(ctx context.Context, c net.Conn) context.Context {
                         key := connKey(c)
@@ -637,7 +919,7 @@ func startQUIC(vh VirtualHost) {
         srv := &http3.Server{
                 Addr:      vh.Addr,
                 TLSConfig: conf,
-                Handler:   middleware(vh, http.HandlerFunc(handle)),
+                Handler:   securityHeadersMiddleware(middleware(vh, http.HandlerFunc(handle))),
         }
 
         addr, err := net.ResolveUDPAddr("udp", vh.Addr)
@@ -663,11 +945,45 @@ func startQUIC(vh VirtualHost) {
         }
 }
 
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+        applyHSTS := magpieConfig != nil && magpieConfig.Magpie.HSTS
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                w.Header().Set("X-Content-Type-Options", "nosniff")
+                w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+                w.Header().Set("X-XSS-Protection", "1; mode=block")
+                if applyHSTS && r.TLS != nil {
+                        w.Header().Set("Strict-Transport-Security", hstsHeaderValue)
+                }
+                next.ServeHTTP(w, r)
+        })
+}
+
 func middleware(vh VirtualHost, next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 id := interactionIDFromRequest(r)
                 srcIP := sourceIP(r.RemoteAddr)
                 start := time.Now()
+
+                hostKey := stripPort(r.Host)
+                if e, ok := memGuard.getHostErr(hostKey); ok && e == "ram_limit_exceeded" {
+                        logEvent(id, map[string]interface{}{
+                                "level":      "error",
+                                "event":      "content_unavailable",
+                                "reason":     "ram_limit_exceeded",
+                                "src_ip":     srcIP,
+                                "method":     r.Method,
+                                "path":       r.URL.Path,
+                                "host":       r.Host,
+                                "sni":        tlsSNI(r),
+                                "transport":  requestTransportProto(r),
+                                "http_proto": r.Proto,
+                        })
+                        w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+                        w.WriteHeader(http.StatusServiceUnavailable)
+                        _, _ = w.Write([]byte("Content temporarily unavailable: cache memory limit exceeded.\n"))
+                        return
+                }
+
                 lrw := &respWrap{ResponseWriter: w, status: 200}
                 next.ServeHTTP(lrw, r)
 
@@ -680,10 +996,8 @@ func middleware(vh VirtualHost, next http.Handler) http.Handler {
                         "status":           lrw.status,
                         "wait_duration_ms": time.Since(start).Milliseconds(),
                         "listen_host":      vh.Domain,
-                        "transport_proto":  requestTransportProto(r),
+                        "transport":        requestTransportProto(r),
                         "http_proto":       r.Proto,
-                        "http_proto_major": r.ProtoMajor,
-                        "http_proto_minor": r.ProtoMinor,
                 })
         })
 }
@@ -721,75 +1035,310 @@ func (r *respWrap) WriteHeader(code int) {
         r.ResponseWriter.WriteHeader(code)
 }
 
-func applyRewrites(host, path string) string {
+func applyRewrites(host, p string) string {
         rewriteMu.RLock()
         rules := rewritesByHost[host]
         rewriteMu.RUnlock()
 
         for _, rr := range rules {
-                if rr.From == path && rr.To != "" {
+                if rr.From == p && rr.To != "" {
                         return rr.To
                 }
         }
-        return path
+        return p
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
         host := stripPort(r.Host)
+        p := applyRewrites(host, r.URL.Path)
 
-        cache.RLock()
-        data := cache.Data[host]
-        cache.RUnlock()
-
-        path := applyRewrites(host, r.URL.Path)
-
-        content, ok := data[path]
-        if !ok {
-                http.NotFound(w, r)
+        if data, ok := getLocal(host, p); ok {
+                ctype := mime.TypeByExtension(filepath.Ext(p))
+                if ctype == "" {
+                        ctype = "application/octet-stream"
+                }
+                w.Header().Set("Content-Type", ctype)
+                _, _ = w.Write(data)
                 return
         }
 
-        ctype := mime.TypeByExtension(filepath.Ext(path))
-        if ctype == "" {
-                ctype = "application/octet-stream"
+        if origin, ok := getOriginForHost(host); ok {
+                remoteFiles.purgeExpired(host)
+
+                if e, ok := remoteFiles.get(host, p); ok {
+                        if e.MimeType != "" {
+                                w.Header().Set("Content-Type", e.MimeType)
+                        } else {
+                                ctype := mime.TypeByExtension(filepath.Ext(p))
+                                if ctype == "" {
+                                        ctype = "application/octet-stream"
+                                }
+                                w.Header().Set("Content-Type", ctype)
+                        }
+                        _, _ = w.Write(e.Data)
+                        return
+                }
+
+                body, ctype, status, err := fetchRemote(origin, p)
+                if err != nil {
+                        id := interactionIDFromRequest(r)
+                        logError(id, "remote_fetch_failed", err, map[string]interface{}{
+                                "host":   r.Host,
+                                "path":   r.URL.Path,
+                                "origin": origin.String(),
+                                "status": status,
+                        })
+                        http.Error(w, "Upstream fetch failed.\n", http.StatusBadGateway)
+                        return
+                }
+                if status == http.StatusNotFound {
+                        http.NotFound(w, r)
+                        return
+                }
+                if status < 200 || status >= 300 {
+                        id := interactionIDFromRequest(r)
+                        logError(id, "remote_fetch_bad_status", errors.New("bad upstream status"), map[string]interface{}{
+                                "host":   r.Host,
+                                "path":   r.URL.Path,
+                                "origin": origin.String(),
+                                "status": status,
+                        })
+                        http.Error(w, "Upstream fetch failed.\n", http.StatusBadGateway)
+                        return
+                }
+
+                cacheSecs := 0
+                if magpieConfig != nil {
+                        cacheSecs = magpieConfig.Magpie.CacheAgeSecs
+                }
+                if cacheSecs < 0 {
+                        cacheSecs = 0
+                }
+                exp := time.Time{}
+                if cacheSecs > 0 {
+                        exp = time.Now().Add(time.Duration(cacheSecs) * time.Second)
+                }
+
+                entry := remoteEntry{
+                        Data:     body,
+                        Expiry:   exp,
+                        Size:     int64(len(body)) + int64(len(p)),
+                        MimeType: ctype,
+                }
+                cached := remoteFiles.set(host, p, entry)
+
+                if !cached {
+                        id := interactionIDFromRequest(r)
+                        total, limit := memGuard.snapshot()
+                        logEvent(id, map[string]interface{}{
+                                "level":        "warn",
+                                "event":        "remote_cache_bypass",
+                                "reason":       "ram_limit",
+                                "host":         r.Host,
+                                "path":         r.URL.Path,
+                                "origin":       origin.String(),
+                                "cache_total":  total,
+                                "cache_limit":  limit,
+                                "object_bytes": len(body),
+                        })
+                }
+
+                if ctype != "" {
+                        w.Header().Set("Content-Type", ctype)
+                } else {
+                        ctype2 := mime.TypeByExtension(filepath.Ext(p))
+                        if ctype2 == "" {
+                                ctype2 = "application/octet-stream"
+                        }
+                        w.Header().Set("Content-Type", ctype2)
+                }
+                _, _ = w.Write(body)
+                return
         }
-        w.Header().Set("Content-Type", ctype)
-        _, _ = w.Write(content)
+
+        http.NotFound(w, r)
 }
 
-func reloadAllFiles(hosts ParsedHosts) {
+func getLocal(host, p string) ([]byte, bool) {
+        localFiles.RLock()
+        defer localFiles.RUnlock()
+        m := localFiles.Data[host]
+        if m == nil {
+                return nil, false
+        }
+        b, ok := m[p]
+        return b, ok
+}
+
+func reloadAllLocalFiles(hosts ParsedHosts) {
         all := append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...)
         for _, vh := range all {
                 if vh.WebRoot == "" {
                         continue
                 }
-                fsmap := map[string][]byte{}
-                filepath.WalkDir(vh.WebRoot, func(p string, d fs.DirEntry, err error) error {
-                        if err != nil {
-                                logWarn(uuid.New(), "walkdir_error", err, map[string]interface{}{
-                                        "host": vh.Domain,
-                                        "path": p,
-                                })
-                                return nil
-                        }
-                        if !d.IsDir() {
-                                rel, _ := filepath.Rel(vh.WebRoot, p)
-                                rel = "/" + strings.ReplaceAll(rel, "\\", "/")
-                                b, err := os.ReadFile(p)
-                                if err != nil {
-                                        logWarn(uuid.New(), "readfile_error", err, map[string]interface{}{
-                                                "host": vh.Domain,
-                                                "path": p,
-                                        })
-                                        return nil
-                                }
-                                fsmap[rel] = b
-                        }
+                if _, ok := parseHTTPSOrigin(vh.WebRoot); ok {
+                        continue
+                }
+                _ = loadSiteFromDiskIntoCache(vh)
+        }
+}
+
+func loadSiteFromDiskIntoCache(vh VirtualHost) error {
+        fsmap := map[string][]byte{}
+        err := filepath.WalkDir(vh.WebRoot, func(p string, d fs.DirEntry, walkErr error) error {
+                if walkErr != nil {
+                        logWarn(uuid.New(), "walkdir_error", walkErr, map[string]interface{}{
+                                "host": vh.Domain,
+                                "path": p,
+                        })
                         return nil
+                }
+                if d.IsDir() {
+                        return nil
+                }
+                rel, _ := filepath.Rel(vh.WebRoot, p)
+                rel = "/" + strings.ReplaceAll(rel, "\\", "/")
+                b, err := os.ReadFile(p)
+                if err != nil {
+                        logWarn(uuid.New(), "readfile_error", err, map[string]interface{}{
+                                "host": vh.Domain,
+                                "path": p,
+                        })
+                        return nil
+                }
+                fsmap[rel] = b
+                return nil
+        })
+        if err != nil {
+                logError(uuid.New(), "disk_load_failed", err, map[string]interface{}{
+                        "host":     vh.Domain,
+                        "web_root": vh.WebRoot,
                 })
-                cache.Lock()
-                cache.Data[vh.Domain] = fsmap
-                cache.Unlock()
+                return err
+        }
+
+        newBytes := int64(mapBytes(fsmap))
+        if err := memGuard.setHostTotal(vh.Domain, newBytes); err != nil {
+                total, limit := memGuard.snapshot()
+                logError(uuid.New(), "ram_limit_exceeded", err, map[string]interface{}{
+                        "host":        vh.Domain,
+                        "web_root":    vh.WebRoot,
+                        "host_bytes":  newBytes,
+                        "cache_total": total,
+                        "cache_limit": limit,
+                })
+                return err
+        }
+
+        localFiles.Lock()
+        localFiles.Data[vh.Domain] = fsmap
+        localFiles.Unlock()
+
+        logEvent(uuid.New(), map[string]interface{}{
+                "event":      "disk_site_loaded",
+                "host":       vh.Domain,
+                "web_root":   vh.WebRoot,
+                "file_count": len(fsmap),
+        })
+
+        return nil
+}
+
+func fetchRemote(origin *url.URL, reqPath string) ([]byte, string, int, error) {
+        p := reqPath
+        if p == "" {
+                p = "/"
+        }
+        if !strings.HasPrefix(p, "/") {
+                p = "/" + p
+        }
+
+        clean := path.Clean(p)
+        if clean == "." {
+                clean = "/"
+        }
+        if !strings.HasPrefix(clean, "/") {
+                clean = "/" + clean
+        }
+        if strings.Contains(clean, "..") {
+                return nil, "", 0, errors.New("invalid path")
+        }
+
+        u := *origin
+        basePath := u.Path
+        if basePath == "" {
+                basePath = "/"
+        }
+        if !strings.HasSuffix(basePath, "/") {
+                basePath += "/"
+        }
+        joined := path.Join(strings.TrimSuffix(basePath, "/"), clean)
+        if !strings.HasPrefix(joined, "/") {
+                joined = "/" + joined
+        }
+        u.Path = joined
+        u.RawQuery = ""
+        u.Fragment = ""
+
+        ctx, cancel := context.WithTimeout(context.Background(), remoteFetchTimeout)
+        defer cancel()
+
+        req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+        if err != nil {
+                return nil, "", 0, err
+        }
+
+        resp, err := httpClient.Do(req)
+        if err != nil {
+                return nil, "", 0, err
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode == http.StatusNotFound {
+                return nil, "", http.StatusNotFound, nil
+        }
+
+        b, err := io.ReadAll(resp.Body)
+        if err != nil {
+                return nil, "", resp.StatusCode, err
+        }
+
+        ctype := resp.Header.Get("Content-Type")
+        if ctype == "" {
+                ctype = mime.TypeByExtension(filepath.Ext(clean))
+        }
+
+        return b, ctype, resp.StatusCode, nil
+}
+
+func strictHTTPClient() *http.Client {
+        tlsConf := &tls.Config{
+                MinVersion: tls.VersionTLS13,
+                CurvePreferences: []tls.CurveID{
+                        tls.X25519MLKEM768,
+                        tls.X25519,
+                        tls.CurveP256,
+                        tls.CurveP384,
+                        tls.CurveP521,
+                },
+                SessionTicketsDisabled: true,
+        }
+
+        tr := &http.Transport{
+                TLSClientConfig:       tlsConf,
+                ForceAttemptHTTP2:     true,
+                DisableCompression:    false,
+                MaxIdleConns:          128,
+                MaxIdleConnsPerHost:   16,
+                IdleConnTimeout:       30 * time.Second,
+                TLSHandshakeTimeout:   5 * time.Second,
+                ResponseHeaderTimeout: 8 * time.Second,
+                ExpectContinueTimeout: 1 * time.Second,
+        }
+
+        return &http.Client{
+                Transport: tr,
+                Timeout:   remoteFetchTimeout,
         }
 }
 
@@ -930,10 +1479,32 @@ func extractRemoteFromErrorLog(msg string) string {
         return strings.TrimSpace(rest)
 }
 
-func startStdlibLogDiscard() {
-        log.SetOutput(io.Discard)
+func availableRAMBytes() int64 {
+        if runtime.GOOS == "linux" {
+                var info unix.Sysinfo_t
+                if err := unix.Sysinfo(&info); err == nil {
+                        unit := int64(info.Unit)
+                        if unit <= 0 {
+                                unit = 1
+                        }
+                        free := int64(info.Freeram) * unit
+                        if free > 0 {
+                                return free
+                        }
+                }
+        }
+        return defaultAvailRAMBytes
+}
+
+func mapBytes(m map[string][]byte) int {
+        n := 0
+        for k, v := range m {
+                n += len(k)
+                n += len(v)
+        }
+        return n
 }
 
 func init() {
-        startStdlibLogDiscard()
+        log.SetOutput(io.Discard)
 }
