@@ -98,7 +98,7 @@ There are some example routes in the 0.1.0 default build for `/art`, `/shows`, `
 
 As of 0.1.1 and onward, the route rewrites are configured in the YAML per domain, there are no default route rewrites anymore.
 
-As of 0.1.2 and onward, security headers for TLS, and HSTS of "max-age=63072000; includeSubDomains; preload" is avilable bolean with the `strict_transport_security` config option.
+As of 0.1.2 and onward, security headers for all TLS are in place. Further HSTS with a value of "max-age=63072000; includeSubDomains; preload" is available boolean with the `strict_transport_security` config option.
 
 As of 0.1.2 and onward, web content can be loaded from HTTPS network sources instead of from the filesystem. This way the web content of a given domain can be from an S3 bucket or whatnot, and it is stored locally in RAM as much as possible with the cache. To use this feature start the path of web_content with "https", see the example config at the top of this document.
 
