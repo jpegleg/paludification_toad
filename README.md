@@ -16,12 +16,12 @@ as well as the breakthroughs of [kiagateway](https://github.com/jpegleg/kiagatew
 
 This project forks both kiagateway and project-bobcat, customizing for a single server build, and with some more up to date software versions.
 
-The use of Actix was replaced by `kiamagpie` to support ML-KEM hybrid TLS and ease of multiplexing. The `kiamagpie` is trying to adopt QUIC, but the implementation there is currently unverified.
+The use of Actix was replaced by [kiamagpie](https://github.com/jpegleg/kiamagpie/) to support ML-KEM hybrid TLS on OpenBSD, and for the ease of multiplexing. The `kiamagpie` app has adopted QUIC capbilities as well, which is the latest and greatest protocol for web HTTP3. The use of QUIC is not supported from kiagateway or kiaproxy, so any use of QUIC must be exposed directly or with a different gateway that supports UDP.
 
 ## The flow of the toad
 
 ```
-develop app starting from morphobsd template 
+develop app, use template is you like
 terraform
 create config files
 ansible
