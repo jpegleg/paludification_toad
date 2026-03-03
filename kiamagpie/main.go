@@ -49,7 +49,6 @@ type MagpieConfig struct {
                 TLSEnabled      bool        `yaml:"tls"`
                 HTTPEnabled     bool        `yaml:"http"`
                 HSTS            bool        `yaml:"strict_transport_security"`
-                RedirectHTTPS   bool        `yaml:"redirect_https"`
                 CacheAgeSecs    int         `yaml:"cache_age_seconds"`
                 RAMLimitPercent float64     `yaml:"ram_limit_percent"`
                 DomainsTLS      interface{} `yaml:"domains_tls"`
