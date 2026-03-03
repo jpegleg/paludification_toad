@@ -32,6 +32,7 @@ import (
 )
 
 const magpieVersion = "0.1.3"
+const defaultHostKey = "__default__"
 
 const (
         safeMaxRAMLimitBytes   = int64(2 * 1024 * 1024 * 1024)
@@ -45,15 +46,16 @@ const (
 
 type MagpieConfig struct {
         Magpie struct {
-                QUICEnabled     bool        `yaml:"quic"`
-                TLSEnabled      bool        `yaml:"tls"`
-                HTTPEnabled     bool        `yaml:"http"`
-                HSTS            bool        `yaml:"strict_transport_security"`
-                CacheAgeSecs    int         `yaml:"cache_age_seconds"`
-                RAMLimitPercent float64     `yaml:"ram_limit_percent"`
-                DomainsTLS      interface{} `yaml:"domains_tls"`
-                DomainsQUIC     interface{} `yaml:"domains_quic"`
-                DomainsHTTP     interface{} `yaml:"domains_http"`
+                QUICEnabled       bool        `yaml:"quic"`
+                TLSEnabled        bool        `yaml:"tls"`
+                HTTPEnabled       bool        `yaml:"http"`
+                HSTS              bool        `yaml:"strict_transport_security"`
+                CacheAgeSecs      int         `yaml:"cache_age_seconds"`
+                RAMLimitPercent   float64     `yaml:"ram_limit_percent"`
+                DomainsTLS        interface{} `yaml:"domains_tls"`
+                DomainsQUIC       interface{} `yaml:"domains_quic"`
+                DomainsHTTP       interface{} `yaml:"domains_http"`
+                DefaultWebContent string      `yaml:"default_web_content"`
         } `yaml:"kiamagpie"`
 }
 
@@ -382,16 +384,16 @@ func (rc *remoteCache) purgeExpired(host string) {
 }
 
 var (
-        magpieConfig *MagpieConfig
-        watcher *fsnotify.Watcher
-        certMap = sync.Map{}
+        magpieConfig   *MagpieConfig
+        watcher        *fsnotify.Watcher
+        certMap        = sync.Map{}
         rewriteMu      sync.RWMutex
         rewritesByHost = map[string][]RewriteRule{}
-        localFiles = &localCache{Data: map[string]map[string][]byte{}}
-        remoteFiles = &remoteCache{data: map[string]map[string]remoteEntry{}}
+        localFiles     = &localCache{Data: map[string]map[string][]byte{}}
+        remoteFiles    = &remoteCache{data: map[string]map[string]remoteEntry{}}
         remoteOriginMu sync.RWMutex
         remoteOrigin   = map[string]*url.URL{}
-        tcpConnIDs = &connIDStore{m: map[string]uuid.UUID{}}
+        tcpConnIDs     = &connIDStore{m: map[string]uuid.UUID{}}
 
         quicSessions = &quicSessionStore{
                 m:       map[string]quicSession{},
@@ -419,12 +421,12 @@ func main() {
                 logError(uuid.New(), "config_unmarshal_failed", err, nil)
                 os.Exit(1)
         }
-        
+
         magpieConfig = &cfg
-        
+
         avail := availableRAMBytes()
         percent := magpieConfig.Magpie.RAMLimitPercent
-        
+
         if percent <= 0 {
                 percent = defaultRAMPercentFloat
         }
@@ -462,6 +464,20 @@ func main() {
         defer watcher.Close()
         go watchLoop()
         hosts := parseVHosts(magpieConfig)
+        globalOn := hasGlobalListener(hosts)
+        defaultOn := strings.TrimSpace(magpieConfig.Magpie.DefaultWebContent) != ""
+
+        if globalOn && defaultOn {
+                logError(uuid.New(), "config_invalid", errors.New("global listener and default_web_content cannot both be enabled"), map[string]interface{}{
+                        "global_listener":     true,
+                        "default_web_content": magpieConfig.Magpie.DefaultWebContent,
+                })
+                os.Exit(1)
+        }
+
+        if dvh, ok := defaultVHFromConfig(magpieConfig); ok {
+                hosts.HTTP = append(hosts.HTTP, dvh)
+        }
         rewriteMu.Lock()
 
         for _, vh := range append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...) {
@@ -799,7 +815,10 @@ func tlsConfigForHost(vh VirtualHost) (*tls.Config, error) {
 
 func startHTTP(vh VirtualHost) {
         mux := http.NewServeMux()
-        mux.HandleFunc("/", handle)
+        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                handleForVHost(vh, w, r)
+        })
+
         jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:     vh.Addr,
@@ -859,7 +878,9 @@ func startHTTPS(vh VirtualHost) {
         }
 
         mux := http.NewServeMux()
-        mux.HandleFunc("/", handle)
+        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                handleForVHost(vh, w, r)
+        })
         jw := &jsonErrorLogWriter{protocol: "https", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:      vh.Addr,
@@ -915,18 +936,20 @@ func startHTTPS(vh VirtualHost) {
 
 func startQUIC(vh VirtualHost) {
         conf, err := tlsConfigForHost(vh)
-        
+
         if err != nil {
                 logError(uuid.New(), "tls_config_error", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr, "proto": "quic"})
                 return
         }
-        
+
         conf.NextProtos = []string{"h3"}
 
         srv := &http3.Server{
                 Addr:      vh.Addr,
                 TLSConfig: conf,
-                Handler:   securityHeadersMiddleware(middleware(vh, http.HandlerFunc(handle))),
+                Handler: securityHeadersMiddleware(middleware(vh, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                        handleForVHost(vh, w, r)
+                }))),
         }
 
         addr, err := net.ResolveUDPAddr("udp", vh.Addr)
@@ -938,7 +961,7 @@ func startQUIC(vh VirtualHost) {
         const receiveBufferSize = 1024 * 1024
 
         packetConn, err := net.ListenUDP("udp", addr)
-        
+
         if err != nil {
                 logError(uuid.New(), "udp_listen_failed", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr})
                 return
@@ -1056,11 +1079,29 @@ func applyRewrites(host, p string) string {
         return p
 }
 
-func handle(w http.ResponseWriter, r *http.Request) {
-        host := stripPort(r.Host)
-        p := applyRewrites(host, r.URL.Path)
+func handleForVHost(vh VirtualHost, w http.ResponseWriter, r *http.Request) {
+        listenerDomain := strings.TrimSpace(vh.Domain)
+        reqHost := stripPort(r.Host)
+        contentHost := reqHost
 
-        if data, ok := getLocal(host, p); ok {
+        if listenerDomain == "*" {
+                contentHost = "*"
+        } else {
+                if reqHost != "" && !strings.EqualFold(reqHost, listenerDomain) {
+                        if strings.TrimSpace(magpieConfig.Magpie.DefaultWebContent) != "" {
+                                contentHost = defaultHostKey
+                        } else {
+                                w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+                                w.WriteHeader(http.StatusBadGateway)
+                                _, _ = w.Write([]byte("Bad Gateway: unknown host.\n"))
+                                return
+                        }
+                }
+        }
+
+        p := applyRewrites(contentHost, r.URL.Path)
+
+        if data, ok := getLocal(contentHost, p); ok {
                 ctype := mime.TypeByExtension(filepath.Ext(p))
                 if ctype == "" {
                         ctype = "application/octet-stream"
@@ -1070,10 +1111,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
                 return
         }
 
-        if origin, ok := getOriginForHost(host); ok {
-                remoteFiles.purgeExpired(host)
+        if origin, ok := getOriginForHost(contentHost); ok {
+                remoteFiles.purgeExpired(contentHost)
 
-                if e, ok := remoteFiles.get(host, p); ok {
+                if e, ok := remoteFiles.get(contentHost, p); ok {
                         if e.MimeType != "" {
                                 w.Header().Set("Content-Type", e.MimeType)
                         } else {
@@ -1133,7 +1174,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
                         Size:     int64(len(body)) + int64(len(p)),
                         MimeType: ctype,
                 }
-                cached := remoteFiles.set(host, p, entry)
+                cached := remoteFiles.set(contentHost, p, entry)
 
                 if !cached {
                         id := interactionIDFromRequest(r)
@@ -1494,6 +1535,39 @@ func mapBytes(m map[string][]byte) int {
                 n += len(v)
         }
         return n
+}
+
+func hasGlobalListener(hosts ParsedHosts) bool {
+        for _, vh := range hosts.HTTP {
+                if strings.TrimSpace(vh.Domain) == "*" {
+                        return true
+                }
+        }
+        for _, vh := range hosts.TLS {
+                if strings.TrimSpace(vh.Domain) == "*" {
+                        return true
+                }
+        }
+        for _, vh := range hosts.QUIC {
+                if strings.TrimSpace(vh.Domain) == "*" {
+                        return true
+                }
+        }
+        return false
+}
+
+func defaultVHFromConfig(cfg *MagpieConfig) (VirtualHost, bool) {
+        if cfg == nil {
+                return VirtualHost{}, false
+        }
+        wc := strings.TrimSpace(cfg.Magpie.DefaultWebContent)
+        if wc == "" {
+                return VirtualHost{}, false
+        }
+        return VirtualHost{
+                Domain:  defaultHostKey,
+                WebRoot: wc,
+        }, true
 }
 
 func init() {
