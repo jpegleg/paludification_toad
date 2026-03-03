@@ -31,19 +31,16 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.2"
+const magpieVersion = "0.1.3"
 
 const (
-        safeMaxRAMLimitBytes = int64(2 * 1024 * 1024 * 1024)
-        safeMaxRAMPercent    = 80.0
-
+        safeMaxRAMLimitBytes   = int64(2 * 1024 * 1024 * 1024)
+        safeMaxRAMPercent      = 80.0
         defaultRAMPercentFloat = 10.0
         defaultRAMPercentInt   = int64(10)
         defaultAvailRAMBytes   = int64(512 * 1024 * 1024)
-
-        hstsHeaderValue = "max-age=63072000; includeSubDomains; preload"
-
-        remoteFetchTimeout = 10 * time.Second
+        hstsHeaderValue        = "max-age=63072000; includeSubDomains; preload"
+        remoteFetchTimeout     = 10 * time.Second
 )
 
 type MagpieConfig struct {
@@ -261,7 +258,6 @@ func (c *cacheSizer) setHostTotal(host string, newBytes int64) error {
 func (c *cacheSizer) tryAdd(host string, delta int64) bool {
         c.mu.Lock()
         defer c.mu.Unlock()
-
         nextTotal := c.totalBytes + delta
         if c.limitBytes > 0 && nextTotal > c.limitBytes {
                 return false
@@ -336,7 +332,6 @@ func (rc *remoteCache) get(host, p string) (remoteEntry, bool) {
 func (rc *remoteCache) set(host, p string, e remoteEntry) bool {
         rc.mu.Lock()
         defer rc.mu.Unlock()
-
         if rc.data[host] == nil {
                 rc.data[host] = map[string]remoteEntry{}
         }
@@ -389,20 +384,14 @@ func (rc *remoteCache) purgeExpired(host string) {
 
 var (
         magpieConfig *MagpieConfig
-
         watcher *fsnotify.Watcher
         certMap = sync.Map{}
-
         rewriteMu      sync.RWMutex
         rewritesByHost = map[string][]RewriteRule{}
-
         localFiles = &localCache{Data: map[string]map[string][]byte{}}
-
         remoteFiles = &remoteCache{data: map[string]map[string]remoteEntry{}}
-
         remoteOriginMu sync.RWMutex
         remoteOrigin   = map[string]*url.URL{}
-
         tcpConnIDs = &connIDStore{m: map[string]uuid.UUID{}}
 
         quicSessions = &quicSessionStore{
@@ -431,11 +420,12 @@ func main() {
                 logError(uuid.New(), "config_unmarshal_failed", err, nil)
                 os.Exit(1)
         }
+        
         magpieConfig = &cfg
-
+        
         avail := availableRAMBytes()
-
         percent := magpieConfig.Magpie.RAMLimitPercent
+        
         if percent <= 0 {
                 percent = defaultRAMPercentFloat
         }
@@ -447,11 +437,12 @@ func main() {
         if limit <= 0 {
                 limit = (defaultAvailRAMBytes * defaultRAMPercentInt) / 100
         }
+
         if limit > safeMaxRAMLimitBytes {
                 limit = safeMaxRAMLimitBytes
         }
-        memGuard.setLimit(limit)
 
+        memGuard.setLimit(limit)
         httpClient = strictHTTPClient()
 
         logEvent(uuid.New(), map[string]interface{}{
@@ -463,27 +454,26 @@ func main() {
         })
 
         watcher, err = fsnotify.NewWatcher()
+
         if err != nil {
                 logError(uuid.New(), "watcher_create_failed", err, nil)
                 os.Exit(1)
         }
+
         defer watcher.Close()
-
         go watchLoop()
-
         hosts := parseVHosts(magpieConfig)
-
         rewriteMu.Lock()
+
         for _, vh := range append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...) {
                 if len(vh.Rewrites) > 0 {
                         rewritesByHost[vh.Domain] = vh.Rewrites
                 }
         }
-        rewriteMu.Unlock()
 
+        rewriteMu.Unlock()
         indexRemoteOrigins(hosts)
         reloadAllLocalFiles(hosts)
-
         var wg sync.WaitGroup
 
         if magpieConfig.Magpie.HTTPEnabled {
@@ -624,15 +614,38 @@ func watchLoop() {
         for {
                 select {
                 case e := <-watcher.Events:
-                        if e.Op&(fsnotify.Write|fsnotify.Create) != 0 {
-                                if store, ok := certMap.Load(e.Name); ok {
-                                        reloadCert(store.(*certStore))
-                                }
+                        if e.Op&(fsnotify.Write|
+                                fsnotify.Create|
+                                fsnotify.Rename|
+                                fsnotify.Remove) == 0 {
+                                continue
                         }
+                        certMap.Range(func(_, value any) bool {
+                                cs := value.(*certStore)
+                                if sameFile(e.Name, cs.certPath) ||
+                                        sameFile(e.Name, cs.keyPath) {
+                                        logEvent(uuid.New(), map[string]interface{}{
+                                                "event": "cert_fsnotify_trigger",
+                                                "file":  e.Name,
+                                                "op":    e.Op.String(),
+                                        })
+                                        reloadCert(cs)
+                                }
+                                return true
+                        })
                 case err := <-watcher.Errors:
                         logWarn(uuid.New(), "watcher_error", err, nil)
                 }
         }
+}
+
+func sameFile(a, b string) bool {
+        ap, err1 := filepath.EvalSymlinks(a)
+        bp, err2 := filepath.EvalSymlinks(b)
+        if err1 == nil && err2 == nil {
+                return filepath.Clean(ap) == filepath.Clean(bp)
+        }
+        return filepath.Clean(a) == filepath.Clean(b)
 }
 
 func reloadCert(cs *certStore) {
@@ -731,10 +744,13 @@ func loadCertAtomic(vh VirtualHost) (*certStore, error) {
 
         cs.cert.Store(&cert)
 
-        if err := watcher.Add(vh.CertPath); err != nil {
+        certDir := filepath.Dir(vh.CertPath)
+        keyDir := filepath.Dir(vh.KeyPath)
+
+        if err := watcher.Add(certDir); err != nil {
                 logWarn(uuid.New(), "watcher_add_failed", err, map[string]interface{}{"path": vh.CertPath})
         }
-        if err := watcher.Add(vh.KeyPath); err != nil {
+        if err := watcher.Add(keyDir); err != nil {
                 logWarn(uuid.New(), "watcher_add_failed", err, map[string]interface{}{"path": vh.KeyPath})
         }
 
@@ -785,7 +801,6 @@ func tlsConfigForHost(vh VirtualHost) (*tls.Config, error) {
 func startHTTP(vh VirtualHost) {
         mux := http.NewServeMux()
         mux.HandleFunc("/", handle)
-
         jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:     vh.Addr,
@@ -846,7 +861,6 @@ func startHTTPS(vh VirtualHost) {
 
         mux := http.NewServeMux()
         mux.HandleFunc("/", handle)
-
         jw := &jsonErrorLogWriter{protocol: "https", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:      vh.Addr,
@@ -902,10 +916,12 @@ func startHTTPS(vh VirtualHost) {
 
 func startQUIC(vh VirtualHost) {
         conf, err := tlsConfigForHost(vh)
+        
         if err != nil {
                 logError(uuid.New(), "tls_config_error", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr, "proto": "quic"})
                 return
         }
+        
         conf.NextProtos = []string{"h3"}
 
         srv := &http3.Server{
@@ -923,6 +939,7 @@ func startQUIC(vh VirtualHost) {
         const receiveBufferSize = 1024 * 1024
 
         packetConn, err := net.ListenUDP("udp", addr)
+        
         if err != nil {
                 logError(uuid.New(), "udp_listen_failed", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr})
                 return
