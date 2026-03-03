@@ -31,7 +31,7 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.0.0"
+const magpieVersion = "0.1.2"
 
 const (
         safeMaxRAMLimitBytes = int64(2 * 1024 * 1024 * 1024)
@@ -420,12 +420,6 @@ var (
 )
 
 func main() {
-        const kiamagpieVersion = "0.1.2"
-        logEvent(uuid.New(), map[string]interface{}{
-                "event":   "server_start",
-                "version": kiamagpieVersion,
-        })
-
         data, err := os.ReadFile("domains.yaml")
         if err != nil {
                 logError(uuid.New(), "config_read_failed", err, map[string]interface{}{"path": "domains.yaml"})
