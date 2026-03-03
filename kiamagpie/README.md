@@ -9,7 +9,6 @@ Kiamagpie is a TLS capable file and web server that uses a YAML configuration fi
 kiamagpie:
   name: "TEMPLATE_deploy"
   strict_transport_security: True
-  redirect_https: False
   ram_limit_percent: 50
   quic: True
   tls: True
