@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+chainsplit() {
+  file="$1"
+  awk '
+    split_after == 1 {n++;split_after=0}
+    /-----END CERTIFICATE-----/ {split_after=1}
+    {print > "cert" n ".pem"}' < $file
+}
+
+
+
+TEMPLATErenew() {
+  cp /etc/letsencrypt/live/www.example.com/privkey.pem /opt/local/TEMPLATE/key.pem &&
+  chainsplit /etc/letsencrypt/live/www.example.com/fullchain.pem &&
+  cat cert.pem cert1.pem > /opt/local/TEMPLATE/cert.pem
+  chmod 600 /opt/local/TEMPLATE/key.pem
+}
+
+TEMPLATErenew
