@@ -1,0 +1,1 @@
+certbot certonly --hsts --key-type ecdsa -d www.example.com -d example.com --agree-tos -m example@protonmail.com -w /srv/persist/TEMPLATE/
