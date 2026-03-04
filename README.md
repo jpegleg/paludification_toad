@@ -1,6 +1,7 @@
 # paludification_toad 🐸
 
-Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers, Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation.
+Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers, Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation. The Actix (morpho) template also has cookies, kiamagpie does not.
+
 The toad also uses the in-kernel pf firewall and a version of the `kiagateway` service.
 
 The purpose of paludification_toad is to make the smallest, lightest, most secure, self contained, durable web server that still has a complete unix-based operating system administrated with the SSH protocol.
@@ -16,7 +17,11 @@ as well as the breakthroughs of [kiagateway](https://github.com/jpegleg/kiagatew
 
 This project forks both kiagateway and project-bobcat, customizing for a single server build, and with some more up to date software versions.
 
-The use of Actix was replaced by [kiamagpie](https://github.com/jpegleg/kiamagpie/) to support ML-KEM hybrid TLS on OpenBSD, and for the ease of multiplexing. The `kiamagpie` app has adopted QUIC capbilities as well, which is the latest and greatest protocol for web HTTP3. The use of QUIC is not supported from kiagateway or kiaproxy, so any use of QUIC must be exposed directly or with a different gateway that supports UDP.
+The use of Actix was largely replaced by [kiamagpie](https://github.com/jpegleg/kiamagpie/) to support ML-KEM hybrid TLS on OpenBSD, and for the ease of multiplexing. The `kiamagpie` app has adopted QUIC capbilities as well, which is the latest and greatest protocol for web HTTP3. The use of QUIC is not supported from kiagateway or kiaproxy, so any use of QUIC must be exposed directly or with a different gateway that supports UDP.
+
+The Actix (morpho) template is still useful and is better performing than kiamagpie, and even lighter on RAM. It has insecure cookies available (session trackers) that can be utilized, removed, or enhanced to be secure cookies etc.
+
+The entire OpenBSD system and all it's apps including kiagateway and kiamagpie running uses 17MB of RAM passive and 50MB of RAM under moderate load. This is incredibly low compared to most modern systems, which gives us all that much more RAM to do other things, scale, and keep costs down by needing less RAM. Kiamagpie has a cache built in, so the RAM usage is partially configurable and can use a lot of RAM to cache video files and such.
 
 ## The flow of the toad
 
