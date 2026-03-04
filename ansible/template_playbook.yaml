@@ -1,0 +1,120 @@
+---
+
+- name: configure nodes
+  hosts: toads
+  tasks:
+
+  - name: add packages
+    copy:
+      src: files/packages.txt
+      dest: /root/packages.txt
+    tags: packages
+
+  - name: install packages
+    shell: 'pkg_add -l /root/packages.txt'
+    args:
+      executable: /bin/ksh
+    tags: toad
+
+  - name: upgrade all packages
+    shell: 'pkg_add -u'
+    args:
+      executable: /bin/ksh
+    tags: toad
+
+  - name: copy out SSH daemon config
+    copy:
+      src: files/sshd_config_template
+      dest: /etc/ssh/sshd_config
+    tags:
+    - ssh
+    - configs
+
+  - name: copy out kernel firewall (pf) config
+    copy:
+      src: files/pf.conf
+      dest: /etc/pf.conf
+    tags:
+    - pf
+    - configs
+
+  - name: copy out make_toad.sh
+    copy:
+      src: files/make_toad.sh
+      dest: /root/make_toad.sh
+    tags:
+    - toad
+    - configs
+    - maketoad
+
+- name: configure primary nodes
+  hosts: toad_primary
+  tasks:
+
+  - name: copy out toad files
+    copy:
+      src: files/primary014_toad.tgz
+      dest: /root/
+    tags:
+    - primarytoad
+    - restorprimary
+
+  - name: setup web toad
+    shell: 'tar xzvf /root/primary014_toad.tgz -C /'
+    args:
+      executable: /bin/ksh
+    tags:
+    - primarytoad
+    - resetorprimary
+
+  - name: rc enable gate
+    shell: 'rcctl enable gate'
+    args:
+      executable: /bin/ksh
+    tags:
+    - gate
+    - configs
+
+  - name: rc enable magpie
+    shell: 'rcctl enable magpie'
+    args:
+      executable: /bin/ksh
+    tags:
+    - magpie
+    - configs
+
+- name: configure backup nodes
+  hosts: toad_backup
+  tasks:
+
+  - name: copy out toad files
+    copy:
+      src: files/backup014_toad.tgz
+      dest: /root/
+    tags:
+    - backuptoad
+    - toad
+
+  - name: setup web toad
+    shell: 'tar xzvf /root/backup014_toad.tgz -C /'
+    args:
+      executable: /bin/ksh
+    tags:
+    - backuptoad
+    - restorbackup
+
+  - name: rc enable gate
+    shell: 'rcctl enable gate'
+    args:
+      executable: /bin/ksh
+    tags:
+    - gate
+    - configs
+
+  - name: rc enable magpie
+    shell: 'rcctl enable magpie'
+    args:
+      executable: /bin/ksh
+    tags:
+    - magpie
+    - configs
