@@ -1,0 +1,13 @@
+bash-5.3.3          GNU Bourne Again Shell
+bzip2-1.0.8p0       block-sorting file compressor, unencumbered
+certbot-4.1.1p0     client for certificate authorities using ACME protocols
+curl-8.16.0         transfer files with FTP, HTTP, HTTPS, etc.
+cvsps-2.1p3         generate patchsets from CVS repositories
+gettext-runtime-0.23.1 GNU gettext runtime libraries and programs
+git-2.51.0          distributed version control system
+python-3.12.11      interpreted object-oriented programming language
+sqlite3-3.50.4      embedded SQL implementation
+updatedb-0p0        pkg_add speed up cache
+vim-9.1.1706-no_x11-python3 vi clone with many additional features
+wget-1.25.0p0       retrieve files from the web via HTTP, HTTPS and FTP
+xz-5.8.1            library and tools for XZ and LZMA compressed files
