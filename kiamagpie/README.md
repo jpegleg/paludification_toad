@@ -160,6 +160,8 @@ As of 0.1.3 and onward, we have "hot reloading" of certificate and key files.
 
 As of 0.1.3 and onward, we have global listeners `"*"` and `default_web_content` features. Note that those features are exclusive - either or neither but not both can be used in the same config, otherwise they would conflict.
 
+Version 0.1.4 is an important fix for 0.1.3 release. The fix is for an HTTP 502 being sent in some valid traffic conditions.
+
 ## Why use kiamagpie
 
 If you need a compact and purpose built web server for handling singular or multiple websites, kiamagpie is built for that.
