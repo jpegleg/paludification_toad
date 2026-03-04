@@ -2,9 +2,11 @@ use std::path::Path;
 use std::fs::File;
 use std::io::Read;
 use std::env;
-
+use actix_session::{
+    config::PersistentSession, storage::CookieSessionStore, Session, SessionMiddleware,
+};
 use actix_web::{
-    App, get, Responder, HttpRequest, HttpResponse, HttpServer, http::header::ContentType, middleware, web,
+    cookie::{self, Key}, App, get, Responder, HttpRequest, HttpResponse, HttpServer, http::header::ContentType, middleware, web,
 };
 use actix_files::{Files, NamedFile};
 use log::debug;
@@ -24,10 +26,55 @@ use actix_web_lab::header::StrictTransportSecurity;
 #[derive(Debug)]
 struct TlsUpdated;
 
+#[derive(Deserialize)]
+struct Age {
+    pub fage: i32,
+}
+
+#[get("/session")]
+async fn newcook(info: web::Query<Age>, session: Session, req: HttpRequest) -> impl Responder {
+    let id = info.fage;
+    let peer = req.peer_addr();
+    let mut counter = 0;
+    if id > 20 {
+        if let Ok(Some(count)) = session.get::<i32>("counter") {
+            log::info!("Visitor cookie sessions counter for {:?} : {count}", &peer);
+            counter = count + 1;
+            session.insert("counter", counter);
+        } else {
+            session.insert("counter", counter);
+        }
+        NamedFile::open_async("./static/index2.html").await
+    } else {
+        log::info!("Visitor entered age under 21, sending {:?} to notice page...", peer);
+        NamedFile::open_async("./static/index3.html").await
+    }
+}
+
 #[get("/")]
-async fn index(req: HttpRequest) -> HttpResponse {
-    debug!("{req:?}");
-    NamedFile::open_async("./static/index.html").await
+async fn index(session: Session, req: HttpRequest) -> impl Responder {
+    let txid = Uuid::new_v4().to_string();
+    env::set_var("txid", &txid);
+    let peer = req.peer_addr();
+    let requ = req.headers(); 
+    let mut counter = 0;
+    log::info!("{} {:?} visiting website - {:?}", txid, peer, requ);
+
+    if let Ok(Some(count)) = session.get::<i32>("counter") {
+        log::info!("Existing cookie found.");
+        if let Ok(Some(count)) = session.get::<i32>("counter") {
+            log::info!("Visitor cookie sessions counter for {:?} : {count}", &peer);
+            counter = count + 1;
+            session.insert("counter", counter);
+        } else {
+            session.insert("counter", counter);
+        }
+        NamedFile::open_async("./static/index2.html").await
+    } else {
+        log::info!("New cookie needed.");
+        NamedFile::open_async("./static/index.html").await
+    }
+
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -93,10 +140,19 @@ async fn main() -> eyre::Result<()> {
               .wrap(middleware::DefaultHeaders::new().add(("x-frame-options", "SAMEORIGIN")))
               .wrap(middleware::DefaultHeaders::new().add(("x-xss-protection", "1; mode=block")))
               .wrap(middleware::Logger::new("%{txid}e %a -> HTTP %s %r size: %b server-time: %T %{Referer}i %{User-Agent}i"))
+               .wrap(
+                   SessionMiddleware::builder(CookieSessionStore::default(), Key::from(&[0; 64]))
+                    .cookie_secure(false)
+                    .session_lifecycle(
+                        PersistentSession::default().session_ttl(cookie::time::Duration::hours(2)),
+                    )
+                    .build(),
+               )
               .service(index)
+              .service(newcook)
               .service(Files::new("/", "static"))
         })
-        .workers(2)
+        .workers(1)
         .bind_openssl("0.0.0.0:3443", builder)?
         .bind("0.0.0.0:8080")?
         .run();
@@ -123,12 +179,6 @@ async fn main() -> eyre::Result<()> {
 }
 
 fn load_encrypted_private_key() -> PKey<Private> {
-    let keypath = "/opt/morpho/key.pem";
-
-    unveil(keypath, "r")
-      .or_else(unveil::Error::ignore_platform)
-      .unwrap();
-
     let mut file = File::open("/opt/morpho/key.pem").unwrap();
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer).expect("Failed to read file");
