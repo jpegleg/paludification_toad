@@ -31,7 +31,7 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.3"
+const magpieVersion = "0.1.4"
 const defaultHostKey = "__default__"
 
 const (
@@ -1091,10 +1091,7 @@ func handleForVHost(vh VirtualHost, w http.ResponseWriter, r *http.Request) {
                         if strings.TrimSpace(magpieConfig.Magpie.DefaultWebContent) != "" {
                                 contentHost = defaultHostKey
                         } else {
-                                w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-                                w.WriteHeader(http.StatusBadGateway)
-                                _, _ = w.Write([]byte("Bad Gateway: unknown host.\n"))
-                                return
+                                contentHost = reqHost
                         }
                 }
         }
@@ -1204,7 +1201,6 @@ func handleForVHost(vh VirtualHost, w http.ResponseWriter, r *http.Request) {
                 _, _ = w.Write(body)
                 return
         }
-
         http.NotFound(w, r)
 }
 
