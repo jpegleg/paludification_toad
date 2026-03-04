@@ -1,0 +1,9 @@
+[project]
+name = "paludification"
+version = "0.1.4"
+description = "Virtual environment for Paludification Toad Ansible administration"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "ansible>=13.4.0",
+]
