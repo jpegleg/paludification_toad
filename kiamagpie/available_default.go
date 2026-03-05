@@ -6,3 +6,5 @@ package main
 func availableRAMBytes() int64 {
         return defaultAvailRAMBytes
 }
+
+func applyOpenBSDSecurity() {}
