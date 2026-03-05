@@ -11,7 +11,8 @@ if [ "$CMDZ" == "start" ]; then
   pgrep $PROCNM || $PROCNMCMD &
 fi
 if [ "$CMDZ" == "restart" ]; then
-  skillo && $PROCNMCM &
+  skillo;
+  PROCNMCM &
 fi
 if [ "$CMDZ" == "stop" ]; then
   skillo 
