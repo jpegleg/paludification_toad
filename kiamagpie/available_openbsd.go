@@ -17,3 +17,7 @@ func availableRAMBytes() int64 {
         }
         return defaultAvailRAMBytes
 }
+
+func applyOpenBSDSecurity() {
+    unix.Pledge("stdio rpath inet", "")
+}
