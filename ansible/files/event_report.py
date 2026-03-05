@@ -45,7 +45,7 @@ def generate_report(file_path: str) -> dict:
     report = {
         "file_path": str(file_path.resolve()),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "total_lines_read": total_lines,magpie_log_report.
+        "total_lines_read": total_lines,
         "total_valid_json_objects": len(parsed_objects),
         "key_counts": dict(key_counter),
         "value_counts_by_key": {
