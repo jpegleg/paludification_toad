@@ -162,71 +162,9 @@ As of 0.1.3 and onward, we have global listeners `"*"` and `default_web_content`
 
 Version 0.1.4 is an important fix for 0.1.3 release. The fix is for an HTTP 502 being sent in some valid traffic conditions.
 
-## Why use kiamagpie
+#### Changelog continued - the start of the toad 🐸
 
-If you need a compact and purpose built web server for handling singular or multiple websites, kiamagpie is built for that.
+As of version 0.1.500, paludification_toad/kiamagpie has diverged from the main [kiamagpie project](https://github.com/jpegleg/kiamagpie/) with the adoption of [Pledge](https://man.openbsd.org/pledge.2).
 
-If you need an efficient and secure server for general serving of web content such as HTML, CSS, images, videos, audio, and javascript, kiamagpie is built for that.
+We can expect more features to come in to this fork than to the main project in the future, expanded to the use case of a small self sufficient OpenBSD server vs the main kiamagpie project is more cloud oriented. Sort of de-cloudifying the magpie a little to make it larger and have more OpenBSD specific security features and other business features. The main project might adopt some of these additions, but more likely this project will be pulling from the main project and rebasing/adjusting regularly for the near future.
 
-If you need a server that provides support for QUIC, HTTP, and HTTPS protocols, kiamagpie is built for that.
-
-If you need a server that enables hybrid post-quantum-cryptography (PQC) for TLS key exchange [see more regarding the spec FIPS 203](https://csrc.nist.gov/pubs/fips/203/final), then kiamagpie is for that.
-
-_Note, the Go crypto library is the source of the cryptographic support for PQC, no cryptography is added in this project._
-
-If you need event correlation across logs and web interactions as correlated JSON events, kiamagpie is built for that.
-
-## Installation
-
-Kiamagpie is available on [github](https://github.com/jpegleg/kiamagpie) and [docker hub](https://hub.docker.com/r/carefuldata/kiamagpie).
-
-The container image is very small and hardened, with only a single statically linked Go binary added to a minimized container "scratch" image.
-
-The v0.1.0 version has port 80 and 443 exposed in the docker image, while the v0.1.1 and newer have 80-9999 for both UDP and TCP exposed in the docker image.
-
-It will need mount points or insertions for the web content, config, and the cert and key pairs. The `domains.yaml` specifies these paths.
-
-Here is an example of pulling the image from docker hub and running via Podman or Docker:
-
-```
-podman pull docker.io/carefuldata/kiamagpie:latest
-podman run -d -it --network=host -v /opt/local/:/opt/local/ \
-                                 -v /srv/persist:/srv/persist \
-                                 -v /opt/kiamagpie/domains.yaml:/domains.yaml \
-                                 carefuldata/kiamagpie
-```
-
-The mount points for all of the files are configurable in the YAML, except for `domains.yaml` which must be in the working directory of kiamagpie, so in the container version `/`.
-
-Kiamagpie can listen on any TCP or UDP port. UDP is for QUIC protocol only.
-
-Kiamagpie can also be compiled from source or installed from any precompiled release binaries via github.
-
-Kiamagpie works well in Kubernetes, too, just specify the YAML config in the manifest as a configmap or secret, or mount it.
-
-Kiamagpie is a great alternative to Kubernetes at small scale, when there isn't the need to have many services.
-It doesn't replace Kubernetes, but it does the things we need for the web at small and medium scale:
-
-- serve web content
-- use best available network protocols
-- simple and reliable operations
-- solid audit logging and event data (as of v0.1.1 and onward)
-
-  
-Kiamagpie is easier to use and generally more secure and cloud native than traditional web servers like NGINX or Apache HTTPD.
-
-Kiamagpie goes well with [kiagateway](https://github.com/jpegleg/kiagateway) and [kiaproxy](https://github.com/jpegleg/kiaproxy/).
-
-The three services combined are the kiastack, and together they can handle the domain routing, fail over, and transport security,
-as well as the optimization and ease of serving various websites, html, video, javascript, and beyond.
-
-Kiagateway and kiaproxy do not support UDP so they do not support QUIC. Either use another gateway/lb to support QUIC or expose kiamagpie externally for the QUIC listeners.
-Currently doing TLS passthrough for QUIC is not great, so having QUIC protocol terminate on the first point of ingress is much more reasonable.  Kiamagpie can be used as an external QUIC
-proxy/server in this way - set a global listener and load the web content from the webserver remotely or locally. While there are some limitations and impacts of such a design,
-it is a way to operate with QUIC.
-
-## Project promises
-
-This project will never use AI-slop. All code is reviewed, tested, and implemented by a human expert. This repository and the crates.io repository are carefully managed and protected.
-
-This project will be maintained as best as is reasonable.
