@@ -37,3 +37,80 @@ part 2 validation of app
 live your life for 6+ months
 repeat
 ```
+
+## Event reporting
+
+```
+python3 event_report.py /var/log/magpie.log > magpie_report_$(date +%Y%m%d%H%M%S).json
+```
+
+This provides a snapshot of statistics from the web data event JSON lines.
+
+Each report is a count of all keys and the counts of them in the JSON. This sample script reads the entire provided log file. It can be run on the live log to summarize current runtime for the kiamagpie instance.
+
+```
+{
+    "file_path": "/var/log/magpie.log",
+    "generated_at_utc": "2026-03-05T03:16:51.018664+00:00",
+    "total_lines_read": 142,
+    "total_valid_json_objects": 142,
+    "key_counts": {
+        "event": 132,
+        "interaction_id": 142,
+        "ram_avail_bytes": 1,
+        "ram_limit_bytes": 1,
+        "ram_percent": 1,
+        "timestamp": 142,
+        "version": 1,
+        "file_count": 12,
+        "host": 38,
+        "web_root": 12,
+        "file": 48,
+        "op": 48,
+        "cert": 48,
+        "listen_addr": 8,
+        "local": 23,
+        "protocol": 23,
+        "remote": 23,
+        "http_proto": 10,
+        "listen_host": 10,
+        "method": 10,
+        "path": 10,
+        "sni": 17,
+        "src_ip": 10,
+        "status": 10,
+        "transport": 10,
+        "wait_duration_ms": 10
+    },
+    "value_counts_by_key": {
+        "event": {
+            "server_start": 1,
+            "disk_site_loaded": 12,
+...(and so on, truncating here)...
+```
+
+The example is truncated because the output can be larger than I want to put in this README.
+
+This report JSON is automatically generated based on your web events, and useful for analyzing large amounts of web events faster.
+
+I really like the summary of the wait duration on web/file requests:
+
+```
+        "wait_duration_ms": {
+            "6": 1,
+            "0": 8,
+            "1": 1
+        }
+```
+
+So we can learn that we had a wait of 6 miliseconds one time, a wait of 0 miliseconds (less than 1) 8 times, and 1 milisecond 1 time.
+
+From there we can identify the 6 milisecond wait time, and evaluate the interaction. Commonly larger image files or larger media files will have longer wait times.
+
+We also get HTTP status stats:
+
+```
+        "status": {
+            "200": 10
+        },
+```
