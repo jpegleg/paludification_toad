@@ -31,7 +31,7 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.501"
+const magpieVersion = "0.1.502"
 const defaultHostKey = "__default__"
 
 const (
@@ -51,6 +51,7 @@ type MagpieConfig struct {
                 HTTPEnabled         bool        `yaml:"http"`
                 HSTS                bool        `yaml:"strict_transport_security"`
                 CacheAgeSecs        int         `yaml:"cache_age_seconds"`
+                RedirectHTTPS       bool        `yaml:"redirect_to_https"`
                 RAMLimitPercent     float64     `yaml:"ram_limit_percent"`
                 MinTLSVersion       uint16      `yaml:"min_tls_version"`
                 ClientMinTLSVersion uint16      `yaml:"client_min_tls_version"`
@@ -496,10 +497,17 @@ func main() {
         if magpieConfig.Magpie.HTTPEnabled {
                 for _, h := range hosts.HTTP {
                         wg.Add(1)
-                        go func(v VirtualHost) {
-                                defer wg.Done()
-                                startHTTP(v)
-                        }(h)
+                        if magpieConfig.Magpie.RedirectHTTPS {
+                               go func(v VirtualHost) {
+                                       defer wg.Done()
+                                       startHTTPRedirected(v)
+                               }(h)
+                        } else {
+                                go func(v VirtualHost) {
+                                       defer wg.Done()
+                                       startHTTP(v)
+                               }(h)
+                        }
                 }
         }
 
@@ -813,6 +821,77 @@ func tlsConfigForHost(vh VirtualHost) (*tls.Config, error) {
                         return cs.cert.Load(), nil
                 },
         }, nil
+}
+
+func startHTTPRedirected(vh VirtualHost) {
+        mux := http.NewServeMux()
+        mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                targetHost := r.Host
+                if h, _, err := net.SplitHostPort(r.Host); err == nil {
+                        targetHost = h
+                }
+
+                target := "https://" + targetHost + r.URL.RequestURI()
+                http.Redirect(w, r, target, http.StatusMovedPermanently)
+        })
+
+        jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
+        srv := &http.Server{
+                Addr:     vh.Addr,
+                Handler:  securityHeadersMiddleware(middleware(vh, mux)),
+                ErrorLog: log.New(jw, "", 0),
+                ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+                        key := connKey(c)
+                        id := uuid.New()
+                        tcpConnIDs.set(key, id)
+                        return context.WithValue(ctx, interactionIDKey, id)
+                },
+                ConnState: func(c net.Conn, s http.ConnState) {
+                        key := connKey(c)
+                        id, ok := tcpConnIDs.get(key)
+                        if !ok {
+                                id = uuid.New()
+                                tcpConnIDs.set(key, id)
+                        }
+
+                        switch s {
+                        case http.StateNew:
+                                logEvent(id, map[string]interface{}{
+                                        "event":       "connection_open",
+                                        "protocol":    "http",
+                                        "remote":      c.RemoteAddr().String(),
+                                        "local":       c.LocalAddr().String(),
+                                        "host":        vh.Domain,
+                                        "listen_addr": vh.Addr,
+                                })
+                        case http.StateClosed, http.StateHijacked:
+                                logEvent(id, map[string]interface{}{
+                                        "event":    "connection_close",
+                                        "protocol": "http",
+                                        "remote":   c.RemoteAddr().String(),
+                                        "local":    c.LocalAddr().String(),
+                                        "host":     vh.Domain,
+                                })
+                                tcpConnIDs.del(key)
+                        }
+                },
+        }
+
+        ln, err := net.Listen("tcp", vh.Addr)
+        if err != nil {
+                logError(uuid.New(), "http_listen_failed", err, map[string]interface{}{
+                        "host": vh.Domain,
+                        "addr": vh.Addr,
+                })
+                return
+        }
+
+        if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+                logError(uuid.New(), "http_server_error", err, map[string]interface{}{
+                        "host": vh.Domain,
+                        "addr": vh.Addr,
+                })
+        }
 }
 
 func startHTTP(vh VirtualHost) {
