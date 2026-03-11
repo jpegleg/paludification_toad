@@ -31,7 +31,7 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.502"
+const magpieVersion = "0.1.503"
 const defaultHostKey = "__default__"
 
 const (
@@ -398,6 +398,8 @@ var (
         remoteOrigin   = map[string]*url.URL{}
         tcpConnIDs     = &connIDStore{m: map[string]uuid.UUID{}}
 
+        localRootMu    sync.RWMutex
+        localRoots     = map[string]string{}
         quicSessions = &quicSessionStore{
                 m:       map[string]quicSession{},
                 maxSize: 10000,
@@ -491,6 +493,7 @@ func main() {
 
         rewriteMu.Unlock()
         indexRemoteOrigins(hosts)
+        indexLocalRoots(hosts)
         reloadAllLocalFiles(hosts)
         var wg sync.WaitGroup
 
@@ -826,6 +829,26 @@ func tlsConfigForHost(vh VirtualHost) (*tls.Config, error) {
 func startHTTPRedirected(vh VirtualHost) {
         mux := http.NewServeMux()
         mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+                reqHost := stripPort(r.Host)
+                contentHost := reqHost
+
+                listenerDomain := strings.TrimSpace(vh.Domain)
+                if listenerDomain == "*" {
+                        contentHost = "*"
+                } else if reqHost != "" && !strings.EqualFold(reqHost, listenerDomain) {
+                        if strings.TrimSpace(magpieConfig.Magpie.DefaultWebContent) != "" {
+                                contentHost = defaultHostKey
+                        }
+                }
+
+                p := applyRewrites(contentHost, r.URL.Path)
+
+                if data, ctype, ok := readHotLocalFile(contentHost, p); ok {
+                        w.Header().Set("Content-Type", ctype)
+                        _, _ = w.Write(data)
+                        return
+                }
+
                 targetHost := r.Host
                 if h, _, err := net.SplitHostPort(r.Host); err == nil {
                         targetHost = h
@@ -1148,6 +1171,10 @@ func (r *respWrap) WriteHeader(code int) {
 }
 
 func applyRewrites(host, p string) string {
+        if strings.HasPrefix(p, "/.well-known/") {
+                return p
+        }
+
         rewriteMu.RLock()
         rules := rewritesByHost[host]
         rewriteMu.RUnlock()
@@ -1178,6 +1205,12 @@ func handleForVHost(vh VirtualHost, w http.ResponseWriter, r *http.Request) {
         }
 
         p := applyRewrites(contentHost, r.URL.Path)
+
+        if data, ctype, ok := readHotLocalFile(contentHost, p); ok {
+                w.Header().Set("Content-Type", ctype)
+                _, _ = w.Write(data)
+                return
+        }
 
         if data, ok := getLocal(contentHost, p); ok {
                 ctype := mime.TypeByExtension(filepath.Ext(p))
@@ -1645,6 +1678,92 @@ func defaultVHFromConfig(cfg *MagpieConfig) (VirtualHost, bool) {
                 Domain:  defaultHostKey,
                 WebRoot: wc,
         }, true
+}
+
+func indexLocalRoots(hosts ParsedHosts) {
+        all := append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...)
+        localRootMu.Lock()
+        defer localRootMu.Unlock()
+
+        for _, vh := range all {
+                if strings.TrimSpace(vh.WebRoot) == "" {
+                        continue
+                }
+                if _, ok := parseHTTPSOrigin(vh.WebRoot); ok {
+                        continue
+                }
+                localRoots[vh.Domain] = vh.WebRoot
+        }
+}
+
+func getLocalRootForHost(host string) (string, bool) {
+        localRootMu.RLock()
+        defer localRootMu.RUnlock()
+        root, ok := localRoots[host]
+        return root, ok
+}
+
+func isHotLocalWellKnownPath(p string) bool {
+        return strings.HasPrefix(p, "/.well-known/")
+}
+
+func readHotLocalFile(host, reqPath string) ([]byte, string, bool) {
+        if !isHotLocalWellKnownPath(reqPath) {
+                return nil, "", false
+        }
+
+        root, ok := getLocalRootForHost(host)
+        if !ok || strings.TrimSpace(root) == "" {
+                return nil, "", false
+        }
+
+        clean := path.Clean(reqPath)
+        if clean == "." {
+                clean = "/"
+        }
+        if !strings.HasPrefix(clean, "/") {
+                clean = "/" + clean
+        }
+        if !strings.HasPrefix(clean, "/.well-known/") {
+                return nil, "", false
+        }
+
+        rel := strings.TrimPrefix(clean, "/")
+        diskPath := filepath.Join(root, filepath.FromSlash(rel))
+
+        rootClean, err := filepath.Abs(root)
+        if err != nil {
+                return nil, "", false
+        }
+        diskPathClean, err := filepath.Abs(diskPath)
+        if err != nil {
+                return nil, "", false
+        }
+
+        relToRoot, err := filepath.Rel(rootClean, diskPathClean)
+        if err != nil {
+                return nil, "", false
+        }
+        if relToRoot == ".." || strings.HasPrefix(relToRoot, ".."+string(filepath.Separator)) {
+                return nil, "", false
+        }
+
+        st, err := os.Stat(diskPathClean)
+        if err != nil || st.IsDir() {
+                return nil, "", false
+        }
+
+        b, err := os.ReadFile(diskPathClean)
+        if err != nil {
+                return nil, "", false
+        }
+
+        ctype := mime.TypeByExtension(filepath.Ext(clean))
+        if ctype == "" {
+                ctype = "application/octet-stream"
+        }
+
+        return b, ctype, true
 }
 
 func init() {
