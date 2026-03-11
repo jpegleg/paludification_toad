@@ -1,0 +1,19 @@
+[package]
+name = "kiaproxybsd"
+version = "0.1.3"
+edition = "2024"
+authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
+license = "MIT"
+description = "high performance and extremely light TCP load balancer proxy"
+homepage = "https://carefuldata.com"
+repository = "https://github.com/jpegleg/kiaproxy"
+readme = "README.md"
+categories = ["network-programming"]
+keywords = ["tcp", "high-availability", "ha", "tls-passthrough", "proxy"]
+
+[dependencies]
+tokio = { version = "1.48.0", features = ["net", "rt-multi-thread", "io-util", "time", "macros"] }
+chrono = "0.4.42"
+uuid = { version = "1.19.0", features = ["v4"] }
+unveil = "0.3.2"
+pledge = "0.4.2"
