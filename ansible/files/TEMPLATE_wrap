@@ -3,16 +3,17 @@
 chainsplit() {
   file="$1"
   awk '
-    /-----END CERTIFICATE-----/ {
-        print >> ("cert" n ".pem")
-        close("cert" n ".pem")
-        n++
-        next
-    }
+    BEGIN { n=0; split_after=0 }
     {
-        print >> ("cert" n ".pem")
+      if (n == 0) out="cert.pem"
+      else out="cert" n ".pem"
+
+      print > out
     }
-  ' "$file"
+    /-----END CERTIFICATE-----/ {
+      n++
+    }
+  ' < "$file"
 }
 
 TEMPLATErenew() {
