@@ -31,7 +31,7 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.503"
+const magpieVersion = "0.1.504"
 const defaultHostKey = "__default__"
 
 const (
@@ -387,9 +387,13 @@ func (rc *remoteCache) purgeExpired(host string) {
 }
 
 var (
-        magpieConfig   *MagpieConfig
-        watcher        *fsnotify.Watcher
-        certMap        = sync.Map{}
+        magpieConfig *MagpieConfig
+        watcher      *fsnotify.Watcher
+
+        watchedDirs  sync.Map
+        certStoreMap sync.Map
+        certMap      = sync.Map{}
+
         rewriteMu      sync.RWMutex
         rewritesByHost = map[string][]RewriteRule{}
         localFiles     = &localCache{Data: map[string]map[string][]byte{}}
@@ -397,10 +401,9 @@ var (
         remoteOriginMu sync.RWMutex
         remoteOrigin   = map[string]*url.URL{}
         tcpConnIDs     = &connIDStore{m: map[string]uuid.UUID{}}
-
         localRootMu    sync.RWMutex
         localRoots     = map[string]string{}
-        quicSessions = &quicSessionStore{
+        quicSessions   = &quicSessionStore{
                 m:       map[string]quicSession{},
                 maxSize: 10000,
                 ttl:     10 * time.Minute,
@@ -415,6 +418,8 @@ var (
 )
 
 func main() {
+        applyOpenBSDSecurity()
+        
         data, err := os.ReadFile("domains.yaml")
         if err != nil {
                 logError(uuid.New(), "config_read_failed", err, map[string]interface{}{"path": "domains.yaml"})
@@ -501,15 +506,15 @@ func main() {
                 for _, h := range hosts.HTTP {
                         wg.Add(1)
                         if magpieConfig.Magpie.RedirectHTTPS {
-                               go func(v VirtualHost) {
-                                       defer wg.Done()
-                                       startHTTPRedirected(v)
-                               }(h)
+                                go func(v VirtualHost) {
+                                        defer wg.Done()
+                                        startHTTPRedirected(v)
+                                }(h)
                         } else {
                                 go func(v VirtualHost) {
-                                       defer wg.Done()
-                                       startHTTP(v)
-                               }(h)
+                                        defer wg.Done()
+                                        startHTTP(v)
+                                }(h)
                         }
                 }
         }
@@ -648,7 +653,7 @@ func watchLoop() {
                                 fsnotify.Remove) == 0 {
                                 continue
                         }
-                        certMap.Range(func(_, value any) bool {
+                        certStoreMap.Range(func(_, value any) bool {
                                 cs := value.(*certStore)
                                 if sameFile(e.Name, cs.certPath) ||
                                         sameFile(e.Name, cs.keyPath) {
@@ -664,6 +669,30 @@ func watchLoop() {
                 case err := <-watcher.Errors:
                         logWarn(uuid.New(), "watcher_error", err, nil)
                 }
+        }
+}
+
+func cleanPath(p string) string {
+        if rp, err := filepath.EvalSymlinks(p); err == nil {
+                return filepath.Clean(rp)
+        }
+        if ap, err := filepath.Abs(p); err == nil {
+                return filepath.Clean(ap)
+        }
+        return filepath.Clean(p)
+}
+
+func certPairKey(certPath, keyPath string) string {
+        return cleanPath(certPath) + "\x00" + cleanPath(keyPath)
+}
+
+func addWatchDirOnce(dir string) {
+        dir = cleanPath(dir)
+        if _, loaded := watchedDirs.LoadOrStore(dir, struct{}{}); loaded {
+                return
+        }
+        if err := watcher.Add(dir); err != nil {
+                logWarn(uuid.New(), "watcher_add_failed", err, map[string]interface{}{"path": dir})
         }
 }
 
@@ -756,6 +785,11 @@ func validateIdentity(cert tls.Certificate) error {
 }
 
 func loadCertAtomic(vh VirtualHost) (*certStore, error) {
+        key := certPairKey(vh.CertPath, vh.KeyPath)
+        if existing, ok := certStoreMap.Load(key); ok {
+                return existing.(*certStore), nil
+        }
+
         cert, err := tls.LoadX509KeyPair(vh.CertPath, vh.KeyPath)
         if err != nil {
                 return nil, err
@@ -766,21 +800,19 @@ func loadCertAtomic(vh VirtualHost) (*certStore, error) {
         }
 
         cs := &certStore{
-                certPath: vh.CertPath,
-                keyPath:  vh.KeyPath,
+                certPath: cleanPath(vh.CertPath),
+                keyPath:  cleanPath(vh.KeyPath),
         }
 
         cs.cert.Store(&cert)
 
-        certDir := filepath.Dir(vh.CertPath)
-        keyDir := filepath.Dir(vh.KeyPath)
+        actual, loaded := certStoreMap.LoadOrStore(key, cs)
+        if loaded {
+                return actual.(*certStore), nil
+        }
 
-        if err := watcher.Add(certDir); err != nil {
-                logWarn(uuid.New(), "watcher_add_failed", err, map[string]interface{}{"path": vh.CertPath})
-        }
-        if err := watcher.Add(keyDir); err != nil {
-                logWarn(uuid.New(), "watcher_add_failed", err, map[string]interface{}{"path": vh.KeyPath})
-        }
+        addWatchDirOnce(filepath.Dir(vh.CertPath))
+        addWatchDirOnce(filepath.Dir(vh.KeyPath))
 
         certMap.Store(vh.CertPath, cs)
         certMap.Store(vh.KeyPath, cs)
