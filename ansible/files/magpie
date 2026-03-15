@@ -6,11 +6,15 @@ skillo() {
 }
 
 if [ "$CMDZ" == "start" ]; then
-  pgrep $PROCNM || cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /var/log/magpie.log 2>&1 &
+  pgrep $PROCNM || cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /dev/null 2>&1 &
+  # JSON event output mode, use this instead:
+  #pgrep $PROCNM || cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /var/log/magpie.log 2>&1 &
 fi
 if [ "$CMDZ" == "restart" ]; then
   skillo;
-  cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /var/log/magpie.log 2>&1 &
+  pgrep $PROCNM || cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /dev/null 2>&1 &
+  # JSON event output mode, use this instead:
+  #pgrep $PROCNM || cd /opt/kiamagpie/ && /usr/local/bin/kiamagpie > /var/log/magpie.log 2>&1 &
 fi
 if [ "$CMDZ" == "stop" ]; then
   skillo
