@@ -46,7 +46,55 @@
     - toad
     - configs
     - maketoad
+    
+  - name: copy out limits.py
+    copy:
+      src: files/limits.py
+      dest: /root/limits.py
+    tags:
+    - toad
+    - configs
+    - limits
+    
+  - name: setup server venv
+    shell: 'python3 -m venv venv'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
 
+  - name: pip upgrade
+    shell: '/root/venv/bin/python3 pip install --upgrade pip'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - pip
+
+  - name: pip install exception_logger
+    shell: '/root/venv/bin/python3 pip install exception_logger'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - pip
+
+  - name: set system limits
+    shell: '/root/venv/bin/python3 /root/limits.py'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - limits
+    
 - name: configure primary nodes
   hosts: toad_primary
   tasks:
