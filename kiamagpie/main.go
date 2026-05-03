@@ -31,17 +31,21 @@ import (
         "gopkg.in/yaml.v3"
 )
 
-const magpieVersion = "0.1.504"
+const magpieVersion = "0.1.505"
 const defaultHostKey = "__default__"
 
 const (
-        safeMaxRAMLimitBytes   = int64(2 * 1024 * 1024 * 1024)
-        safeMaxRAMPercent      = 80.0
-        defaultRAMPercentFloat = 10.0
-        defaultRAMPercentInt   = int64(10)
-        defaultAvailRAMBytes   = int64(512 * 1024 * 1024)
-        hstsHeaderValue        = "max-age=63072000; includeSubDomains; preload"
-        remoteFetchTimeout     = 10 * time.Second
+        safeMaxRAMLimitBytes    = int64(2 * 1024 * 1024 * 1024)
+        safeMaxRAMPercent       = 80.0
+        defaultRAMPercentFloat  = 10.0
+        defaultRAMPercentInt    = int64(10)
+        defaultAvailRAMBytes    = int64(512 * 1024 * 1024)
+        hstsHeaderValue         = "max-age=63072000; includeSubDomains; preload"
+        remoteFetchTimeout      = 10 * time.Second
+        maxCustomHeaderCount    = 50
+        maxCustomHeaderNameLen  = 256
+        maxCustomHeaderValueLen = 8192
+        maxCustomHeadersTotal   = 65536
 )
 
 type MagpieConfig struct {
@@ -75,6 +79,7 @@ type VirtualHost struct {
         WebRoot         string
         Rewrites        []RewriteRule
         TransportFlavor string
+        CustomHeaders   map[string]string
 }
 
 type ParsedHosts struct {
@@ -160,6 +165,12 @@ func (w *jsonErrorLogWriter) Write(p []byte) (int, error) {
         })
 
         return len(p), nil
+}
+
+var blockedCustomHeaders = map[string]bool{
+        "X-Content-Type-Options": true,
+        "X-Frame-Options":        true,
+        "X-Xss-Protection":       true,
 }
 
 type quicSession struct {
@@ -497,9 +508,38 @@ func main() {
         }
 
         rewriteMu.Unlock()
+        if magpieConfig.Magpie.HSTS {
+                logWarn(uuid.New(), "hsts_flag_deprecated",
+                        errors.New("strict_transport_security: true has no effect; "+
+                                "add Strict-Transport-Security to each domain's headers: block"),
+                        nil)
+        }
+
+        for _, vh := range append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...) {
+                if len(vh.CustomHeaders) > 0 {
+                        logEvent(uuid.New(), map[string]interface{}{
+                                "event":        "custom_headers_loaded",
+                                "host":         vh.Domain,
+                                "header_count": len(vh.CustomHeaders),
+                                "headers":      headerNames(vh.CustomHeaders),
+                        })
+                }
+        }
         indexRemoteOrigins(hosts)
         indexLocalRoots(hosts)
         reloadAllLocalFiles(hosts)
+
+        for _, vh := range append(append(hosts.TLS, hosts.HTTP...), hosts.QUIC...) {
+                if len(vh.CustomHeaders) > 0 {
+                        logEvent(uuid.New(), map[string]interface{}{
+                                "event":        "custom_headers_loaded",
+                                "host":         vh.Domain,
+                                "header_count": len(vh.CustomHeaders),
+                                "headers":      headerNames(vh.CustomHeaders),
+                        })
+                }
+        }
+
         var wg sync.WaitGroup
 
         if magpieConfig.Magpie.HTTPEnabled {
@@ -591,6 +631,18 @@ func parseVHosts(cfg *MagpieConfig) ParsedHosts {
                                                         }
                                                 }
                                         }
+                                        if v, ok := props["headers"]; ok {
+                                                if hm, ok := v.(map[string]interface{}); ok {
+                                                        parsed, err := parseCustomHeaders(domain, hm)
+                                                        if err != nil {
+                                                                logWarn(uuid.New(), "custom_headers_invalid", err,
+                                                                        map[string]interface{}{"domain": domain})
+                                                        } else {
+                                                                vh.CustomHeaders = parsed
+                                                        }
+                                                }
+                                        }
+
                                 }
                                 out = append(out, vh)
                         }
@@ -615,6 +667,85 @@ func indexRemoteOrigins(hosts ParsedHosts) {
                         remoteOrigin[vh.Domain] = u
                 }
         }
+}
+
+// parseCustomHeaders validates and normalises the raw "headers:" YAML block for
+// a single virtual host.  It enforces:
+//   - count  ≤ maxCustomHeaderCount
+//   - name   ≤ maxCustomHeaderNameLen  (must also be a legal HTTP token)
+//   - value  ≤ maxCustomHeaderValueLen (no CRLF injection)
+//   - total  ≤ maxCustomHeadersTotal bytes (names + values combined)
+//   - names that kiamagpie controls internally are rejected
+func parseCustomHeaders(domain string, raw map[string]interface{}) (map[string]string, error) {
+        if len(raw) == 0 {
+                return nil, nil
+        }
+        if len(raw) > maxCustomHeaderCount {
+                return nil, fmt.Errorf("domain %q: too many custom headers (%d, max %d)",
+                        domain, len(raw), maxCustomHeaderCount)
+        }
+
+        out := make(map[string]string, len(raw))
+        totalBytes := 0
+
+        for rawName, rawVal := range raw {
+                name := strings.TrimSpace(rawName)
+                if name == "" {
+                        return nil, fmt.Errorf("domain %q: empty header name", domain)
+                }
+                if len(name) > maxCustomHeaderNameLen {
+                        return nil, fmt.Errorf("domain %q: header name too long (%d chars, max %d)",
+                                domain, len(name), maxCustomHeaderNameLen)
+                }
+                if !isValidHeaderName(name) {
+                        return nil, fmt.Errorf("domain %q: header name %q contains invalid characters",
+                                domain, name)
+                }
+                canonical := http.CanonicalHeaderKey(name)
+                if blockedCustomHeaders[canonical] {
+                        return nil, fmt.Errorf("domain %q: header %q is controlled by kiamagpie and cannot be overridden",
+                                domain, canonical)
+                }
+                val, ok := rawVal.(string)
+                if !ok {
+                        return nil, fmt.Errorf("domain %q: value for header %q must be a string",
+                                domain, canonical)
+                }
+                val = strings.TrimSpace(val)
+                if len(val) > maxCustomHeaderValueLen {
+                        return nil, fmt.Errorf("domain %q: value for header %q too long (%d bytes, max %d)",
+                                domain, canonical, len(val), maxCustomHeaderValueLen)
+                }
+                if strings.ContainsAny(val, "\r\n") {
+                        return nil, fmt.Errorf("domain %q: value for header %q contains CR or LF", domain, canonical)
+                }
+                totalBytes += len(canonical) + len(val)
+                if totalBytes > maxCustomHeadersTotal {
+                        return nil, fmt.Errorf("domain %q: combined custom header size exceeds %d bytes",
+                                domain, maxCustomHeadersTotal)
+                }
+
+                out[canonical] = val
+        }
+
+        return out, nil
+}
+
+func isValidHeaderName(s string) bool {
+        for i := 0; i < len(s); i++ {
+                c := s[i]
+                switch {
+                case c >= 'A' && c <= 'Z':
+                case c >= 'a' && c <= 'z':
+                case c >= '0' && c <= '9':
+                case c == '!' || c == '#' || c == '$' || c == '%' || c == '&' ||
+                        c == '\'' || c == '*' || c == '+' || c == '-' || c == '.' ||
+                        c == '^' || c == '_' || c == '`' || c == '|' || c == '~':
+                default:
+                        return false
+                }
+        }
+        return len(s) > 0
 }
 
 func parseHTTPSOrigin(s string) (*url.URL, bool) {
@@ -893,7 +1024,7 @@ func startHTTPRedirected(vh VirtualHost) {
         jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:     vh.Addr,
-                Handler:  securityHeadersMiddleware(middleware(vh, mux)),
+                Handler:  securityHeadersMiddleware(vh, middleware(vh, mux)),
                 ErrorLog: log.New(jw, "", 0),
                 ConnContext: func(ctx context.Context, c net.Conn) context.Context {
                         key := connKey(c)
@@ -908,7 +1039,6 @@ func startHTTPRedirected(vh VirtualHost) {
                                 id = uuid.New()
                                 tcpConnIDs.set(key, id)
                         }
-
                         switch s {
                         case http.StateNew:
                                 logEvent(id, map[string]interface{}{
@@ -958,7 +1088,7 @@ func startHTTP(vh VirtualHost) {
         jw := &jsonErrorLogWriter{protocol: "http", host: vh.Domain, addr: vh.Addr}
         srv := &http.Server{
                 Addr:     vh.Addr,
-                Handler:  securityHeadersMiddleware(middleware(vh, mux)),
+                Handler:  securityHeadersMiddleware(vh, middleware(vh, mux)),
                 ErrorLog: log.New(jw, "", 0),
                 ConnContext: func(ctx context.Context, c net.Conn) context.Context {
                         key := connKey(c)
@@ -1021,7 +1151,7 @@ func startHTTPS(vh VirtualHost) {
         srv := &http.Server{
                 Addr:      vh.Addr,
                 TLSConfig: conf,
-                Handler:   securityHeadersMiddleware(middleware(vh, mux)),
+                Handler:   securityHeadersMiddleware(vh, middleware(vh, mux)),
                 ErrorLog:  log.New(jw, "", 0),
                 ConnContext: func(ctx context.Context, c net.Conn) context.Context {
                         key := connKey(c)
@@ -1072,7 +1202,6 @@ func startHTTPS(vh VirtualHost) {
 
 func startQUIC(vh VirtualHost) {
         conf, err := tlsConfigForHost(vh)
-
         if err != nil {
                 logError(uuid.New(), "tls_config_error", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr, "proto": "quic"})
                 return
@@ -1083,7 +1212,7 @@ func startQUIC(vh VirtualHost) {
         srv := &http3.Server{
                 Addr:      vh.Addr,
                 TLSConfig: conf,
-                Handler: securityHeadersMiddleware(middleware(vh, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+                Handler: securityHeadersMiddleware(vh, middleware(vh, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                         handleForVHost(vh, w, r)
                 }))),
         }
@@ -1097,7 +1226,6 @@ func startQUIC(vh VirtualHost) {
         const receiveBufferSize = 1024 * 1024
 
         packetConn, err := net.ListenUDP("udp", addr)
-
         if err != nil {
                 logError(uuid.New(), "udp_listen_failed", err, map[string]interface{}{"host": vh.Domain, "addr": vh.Addr})
                 return
@@ -1112,16 +1240,17 @@ func startQUIC(vh VirtualHost) {
         }
 }
 
-func securityHeadersMiddleware(next http.Handler) http.Handler {
-        applyHSTS := magpieConfig != nil && magpieConfig.Magpie.HSTS
+func securityHeadersMiddleware(vh VirtualHost, next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
                 w.Header().Set("X-Content-Type-Options", "nosniff")
                 w.Header().Set("X-Frame-Options", "SAMEORIGIN")
                 w.Header().Set("X-XSS-Protection", "1; mode=block")
-                if applyHSTS && r.TLS != nil {
-                        w.Header().Set("Strict-Transport-Security", hstsHeaderValue)
+                var out http.ResponseWriter = w
+                if len(vh.CustomHeaders) > 0 {
+                        out = &customHeadersWriter{ResponseWriter: w, headers: vh.CustomHeaders}
                 }
-                next.ServeHTTP(w, r)
+
+                next.ServeHTTP(out, r)
         })
 }
 
@@ -1152,6 +1281,7 @@ func middleware(vh VirtualHost, next http.Handler) http.Handler {
                 }
 
                 lrw := &respWrap{ResponseWriter: w, status: 200}
+
                 next.ServeHTTP(lrw, r)
 
                 logEvent(id, map[string]interface{}{
@@ -1159,6 +1289,7 @@ func middleware(vh VirtualHost, next http.Handler) http.Handler {
                         "method":           r.Method,
                         "path":             r.URL.Path,
                         "host":             r.Host,
+                        "headers":          headerNames(vh.CustomHeaders),
                         "sni":              tlsSNI(r),
                         "status":           lrw.status,
                         "wait_duration_ms": time.Since(start).Milliseconds(),
@@ -1195,6 +1326,35 @@ func quicSessionID(r *http.Request) uuid.UUID {
 type respWrap struct {
         http.ResponseWriter
         status int
+}
+
+type customHeadersWriter struct {
+        http.ResponseWriter
+        headers map[string]string
+        once    sync.Once
+}
+
+func (c *customHeadersWriter) applyHeaders() {
+        c.once.Do(func() {
+                h := c.ResponseWriter.Header()
+                for name, val := range c.headers {
+                        h.Set(name, val)
+                }
+        })
+}
+
+func (c *customHeadersWriter) Header() http.Header {
+        return c.ResponseWriter.Header()
+}
+
+func (c *customHeadersWriter) WriteHeader(code int) {
+        c.applyHeaders()
+        c.ResponseWriter.WriteHeader(code)
+}
+
+func (c *customHeadersWriter) Write(b []byte) (int, error) {
+        c.applyHeaders()
+        return c.ResponseWriter.Write(b)
 }
 
 func (r *respWrap) WriteHeader(code int) {
@@ -1581,6 +1741,14 @@ func tlsSNI(r *http.Request) string {
                 return r.TLS.ServerName
         }
         return ""
+}
+
+func headerNames(m map[string]string) []string {
+        names := make([]string, 0, len(m))
+        for k := range m {
+                names = append(names, k)
+        }
+        return names
 }
 
 func sourceIP(remoteAddr string) string {
