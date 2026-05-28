@@ -28,3 +28,7 @@ serde_yml = "0.0.12"
 openssl = { version = "0.10.80", features = ["v110"] }
 pledge = "0.4.2"
 unveil = "0.3.2"
+
+[profile.release]
+strip       = true
+lto         = true
