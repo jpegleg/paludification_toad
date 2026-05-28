@@ -1,6 +1,6 @@
 # paludification_toad 🐸
 
-Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers, Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation. The Actix (morpho) template also has cookies, kiamagpie does not.
+Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers such as the included `kiabluejaybsd` (morphobsd), Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation. The Actix template also has cookies, kiamagpie does not.
 
 The toad also uses the in-kernel pf firewall and a version of the `kiagateway` service.
 
@@ -10,16 +10,16 @@ __paludification__ is a geomorphology term for the build up of plant matter and 
 
 ## Current state of the project
 
-The material is being synthesized between [project bobcat](https://github.com/jpegleg/project-bobcat/) and [serotinous cone](https://github.com/jpegleg/serotinous-cone/).
+The material is being synthesized between [project bobcat](https://github.com/jpegleg/project-bobcat/), [kiabluejay](github.com/jpegleg/kiabluejay/), and [serotinous cone](https://github.com/jpegleg/serotinous-cone/).
 
 The creation of this project was based on some undesirable results in the latest generation of serotinous cones,
 as well as the breakthroughs of [kiagateway](https://github.com/jpegleg/kiagateway).
 
 This project forks both kiagateway and project-bobcat, customizing for a single server build, and with some more up to date software versions.
 
-The use of Actix was largely replaced by [kiamagpie](https://github.com/jpegleg/kiamagpie/) to support ML-KEM hybrid TLS on OpenBSD, and for the ease of multiplexing. The `kiamagpie` app has adopted QUIC capbilities as well, which is the latest and greatest protocol for web HTTP3. The use of QUIC is not supported from kiagateway or kiaproxy, so any use of QUIC must be exposed directly or with a different gateway that supports UDP.
+The use of [Actix](https://github.com/jpegleg/paludification_toad/tree/main/morphobsd) has become primary default web server while [kiamagpie](https://github.com/jpegleg/kiamagpie/) remains in use for QUIC support, multi-domain support, and remote content caching. The latest style uses `kiabluejaybsd` for each domain instead of relying on kiamagpie for multiple domains, and leverages LibreSSL cryptography instead of Go crypto like `kiamagpie`. The `kiamagpie` app has adopted QUIC capbilities as well, which is the latest and greatest protocol for web HTTP3. The use of QUIC is not supported from kiagateway or kiaproxy, so any use of QUIC must be exposed directly or with a different gateway that supports UDP.
 
-The Actix (morpho) template is still useful and is better performing than kiamagpie, and even lighter on RAM. It has insecure cookies available (session trackers) that can be utilized, removed, or enhanced to be secure cookies etc.
+The Actix template is still useful and is better performing than kiamagpie, and even lighter on RAM. It has insecure cookies available (session trackers) that can be utilized, removed, or enhanced to be secure cookies etc. Currently the `kiabluejaybsd` requires multiple copies to be run to manage multiple domains compared to `kiamagpie`. We can allocation kiabluejaybsd instances to different ports and use `kiagateway` to balance between them.
 
 The entire OpenBSD system and all it's apps including kiagateway and kiamagpie running uses 17MB of RAM passive and 50MB of RAM under moderate load. This is incredibly low compared to most modern systems, which gives us all that much more RAM to do other things, scale, and keep costs down by needing less RAM. Kiamagpie has a cache built in, so the RAM usage is partially configurable and can use a lot of RAM to cache video files and such.
 
