@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 CMDZ="$1"
-PROCNM="morpho-server-template"
+PROCNM="kiabluejaybsd"
 
 skillo() {
   pkill $PROCNM && pgrep $PROCNM && pkill -9 $PROCNM
