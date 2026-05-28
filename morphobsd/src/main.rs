@@ -282,7 +282,7 @@ async fn main() -> eyre::Result<()> {
     let runid = env::var("RUN_ID").unwrap_or("kiabluejaybsd".to_string());
 
     log::info!(
-        "{{\"event\":\"initialized version 0.1.7\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
+        "{{\"event\":\"initialized version 0.1.700\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
         readi,
         runid
     );
