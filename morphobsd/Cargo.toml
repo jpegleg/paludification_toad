@@ -30,5 +30,5 @@ pledge = "0.4.2"
 unveil = "0.3.2"
 
 [profile.release]
-strip       = true
-lto         = true
+strip = true
+lto = true
