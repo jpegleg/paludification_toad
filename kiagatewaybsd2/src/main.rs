@@ -16,7 +16,6 @@ const MAX_HTTP_HEADERS: usize = 32 * 1024;
 const MAX_TLS_INITIAL: usize = 32 * 1024;
 const MAX_TLS_RECORDS_TO_SCAN: usize = 8;
 const READ_CHUNK: usize = 1024;
-const HTTP_HEADER_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const TLS_CLIENTHELLO_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const BACKEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const PROXY_IDLE_TIMEOUT: Duration = Duration::from_secs(60 * 5);
