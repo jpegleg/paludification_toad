@@ -1,0 +1,24 @@
+[package]
+name = "redirectrixbsd"
+version = "0.2.0"
+edition = "2024"
+authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
+license = "MIT"
+description = "a very small and fast OpenBSD HTTP to HTTPS redirection service with support for ACME HTTP-01"
+homepage = "https://carefuldata.com"
+repository = "https://github.com/jpegleg/vernal_edgewarden"
+readme = "README.md"
+keywords = ["http", "redirect", "redirection", "http-microservice"]
+categories = ["network-programming", "web-programming::http-server"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[dependencies]
+actix-files = "0.6.10"
+actix-web = "4.13.0"
+futures-util = "0.3.32"
+pledge = "0.4.2"
+unveil = "0.3.2"
