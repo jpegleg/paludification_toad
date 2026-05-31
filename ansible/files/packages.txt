@@ -1,13 +1,51 @@
-bash-5.3.3          GNU Bourne Again Shell
+bash-5.3.9          GNU Bourne Again Shell
 bzip2-1.0.8p0       block-sorting file compressor, unencumbered
-certbot-4.1.1p0     client for certificate authorities using ACME protocols
-curl-8.16.0         transfer files with FTP, HTTP, HTTPS, etc.
+certbot-5.5.0       client for certificate authorities using ACME protocols
+curl-8.20.0         transfer files with FTP, HTTP, HTTPS, etc.
 cvsps-2.1p3         generate patchsets from CVS repositories
-gettext-runtime-0.23.1 GNU gettext runtime libraries and programs
-git-2.51.0          distributed version control system
-python-3.12.11      interpreted object-oriented programming language
-sqlite3-3.50.4      embedded SQL implementation
+gettext-runtime-1.0 GNU gettext runtime libraries and programs
+git-2.53.0          distributed version control system
+gitwrapper-0.125    invoke an appropriate Git repository server
+libb2-0.98.1v0      library providing BLAKE2b, BLAKE2s, BLAKE2bp, BLAKE2sp
+libffi-3.5.2p0      Foreign Function Interface
+libiconv-1.19       character set conversion library
+libidn2-2.3.0p0     implementation of IDNA2008 internationalized domain names
+libpsl-0.21.1p1     public suffix list library
+libsodium-1.0.22    library for network communications and cryptography
+libunistring-0.9.7  manipulate Unicode strings
+nghttp2-1.68.1      library for HTTP/2
+nghttp3-1.15.0      implementation of HTTP/3
+ngtcp2-1.22.1       implementation of the RFC 9000 QUIC protocol
+p5-Error-0.17030    error/exception handling in an OO-ish way
+p5-Mail-Tools-2.21p0 modules for handling mail with perl
+p5-Time-TimeDate-2.33 library for parsing and formatting dates and times
+pcre2-10.44         perl-compatible regular expression library, version 2
+py3-ConfigArgParse-1.7p2 argparse replacement, allows options to be set via files/env
+py3-acme-5.5.0      ACME protocol implementation
+py3-brotli-1.2.0    Python bindings for the Brotli compression library
+py3-certifi-2026.1.4 TLS CA support for Python, patched to use /etc/ssl/cert.pem
+py3-cffi-2.0.0p0    Foreign Function Interface for Python calling C code
+py3-charset-normalizer-3.4.7 character set detector library
+py3-configobj-5.0.9p0 config file reader and writer
+py3-cparser-3.0     C parser in pure Python
+py3-cryptography-46.0.7 cryptographic recipes and primitives for Python
+py3-distro-1.9.0p2  provide information about the OS platform
+py3-idna-3.11       Python library to support the IDNA protocol
+py3-josepy-2.2.0p0  Javascript Object Signing and Encryption (JOSE)
+py3-openssl-26.0.0  Python interface to the OpenSSL library
+py3-parsedatetime-2.6p5 parse human-readable date/time text
+py3-pyRFC3339-1.1p6 format dates according to RFC3339
+py3-requests-2.33.1 elegant and simple HTTP library for Python
+py3-requests-toolbelt-1.0.0p1 utility belt for advanced users of python-requests
+py3-tz-2026.2       Python API for dealing with timezones
+py3-urllib3-1.26.20p0 HTTP library for Python
+py3-zopecomponent-6.0p1 component architecture from Zope
+py3-zopeevent-5.0p0 very basic event publishing system from Zope
+py3-zopeinterface-7.2p0 object interface infrastructure from Zope
+python-3.13.13      interpreted object-oriented programming language
+quirks-7.194        exceptions to pkg_add rules
+sqlite3-3.51.3      embedded SQL implementation
 updatedb-0p0        pkg_add speed up cache
-vim-9.1.1706-no_x11-python3 vi clone with many additional features
+vim-9.2.357-python3 vi clone with many additional features
 wget-1.25.0p0       retrieve files from the web via HTTP, HTTPS and FTP
-xz-5.8.1            library and tools for XZ and LZMA compressed files
+xz-5.8.3            library and tools for XZ and LZMA compressed files
