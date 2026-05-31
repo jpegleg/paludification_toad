@@ -143,28 +143,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     println!("{ts} <-> kiagatewaybsd2 >>> service starting: HTTPS (SNI inspection) on port 443");
     println!("{ts} <-> kiagatewaybsd2 >>> service config loaded: {}", printcfg);
 
-    tokio::spawn(async move {
-        loop {
-            match http.accept().await {
-                Ok((socket, addr)) => {
-                    let cfg = config_http.clone();
-                    let txid = Uuid::new_v4().to_string();
-                    tokio::spawn(async move {
-                        if let Err(e) = handle_http(socket, cfg).await {
-                            let ts = chrono::DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
-                            println!("{ts} - {txid} - kiagateway >>> HTTP ERROR {}: {}", addr, e);
-                        }
-                    });
-                }
-                Err(e) => {
-                    let txid = Uuid::new_v4().to_string();
-                    let ts = chrono::DateTime::<Utc>::from(SystemTime::now()).to_rfc3339_opts(SecondsFormat::Millis, true);
-                    println!("{ts} - {txid} - kiagateway >>> HTTP accept ERROR: {}", e);
-                }
-            }
-        }
-    });
-
     let https = TcpListener::bind("0.0.0.0:443").await?;
     let config_https = config.clone();
 
