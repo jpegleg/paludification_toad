@@ -30,3 +30,4 @@ TEMPLATErenew() {
 }
 
 TEMPLATErenew
+rm cert.pem cert1.pem cert2.pem 2>/dev/null
