@@ -19,7 +19,6 @@ chainsplit() {
 TEMPLATErenew() {
   cp /etc/letsencrypt/live/www.example.com/privkey.pem /opt/local/TEMPLATE/key.pem &&
   chainsplit /etc/letsencrypt/live/www.example.com/fullchain.pem &&
-  cat cert.pem cert1.pem > /opt/local/TEMPLATE/cert.pem
   dz3=$(ls cert3.pem || echo NZ)
   if [ "$dz3" != "NZ" ]; then
     cat cert.pem cert1.pem cert2.pem > /opt/local/TEMPLATE/cert.pem
