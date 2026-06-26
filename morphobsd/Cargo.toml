@@ -1,6 +1,6 @@
 [package]
 name = "kiabluejaybsd"
-version = "0.1.700"
+version = "0.1.701"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
