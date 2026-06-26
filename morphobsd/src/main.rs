@@ -46,7 +46,7 @@ struct Config {
     workers: Option<usize>,
     web: WebConfig,
     listeners: Vec<ListenerConfig>,
-    pkipath: String
+    pki_path: String
 }
 
 #[derive(Deserialize, Clone)]
