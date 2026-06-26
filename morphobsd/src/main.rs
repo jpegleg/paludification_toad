@@ -653,7 +653,7 @@ async fn main() -> eyre::Result<()> {
       .or_else(unveil::Error::ignore_platform)
       .unwrap();
 
-    let certpath = &tls.pki_path.clone();
+    let certpath = &config.pki_path.clone();
 
     unveil(certpath, "r")
       .or_else(unveil::Error::ignore_platform)
