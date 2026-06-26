@@ -647,6 +647,11 @@ async fn main() -> eyre::Result<()> {
 
     let config_file = File::open("morph.yaml").expect("Failed to open morph.yaml");
     let config: Config = serde_yml::from_reader(config_file).expect("failed to read morph.yaml");
+    
+    if let Err(e) = validate_config(&config) {
+        eprintln!("Configuration error: {e}");
+        std::process::exit(1);
+    }
     let webpath = config.web.static_dir.clone();
 
     unveil(webpath, "r")
