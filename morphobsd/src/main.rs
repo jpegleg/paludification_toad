@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use actix_files::NamedFile;
 use actix_session::{
