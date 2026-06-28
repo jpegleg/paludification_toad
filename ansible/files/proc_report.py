@@ -14,9 +14,9 @@ Options:
   --compact                  Compact (non-indented) JSON output
 
 Sentinel values in output:
-  "EOR_INCOMPLETE"           / 1405770780455526805075221759218757
+  "EOR_INCOMPLETE"
       Data collection aborted due to an unexpected error mid-field.
-  "PERMISSION_DENIED"        / 27314733421281619415739683064421869503812
+  "PERMISSION_DENIED"
       The field required elevated privileges not available at runtime.
 
 Requirements: Python 3.6+, psutil >= 5.x  (pip install psutil)
