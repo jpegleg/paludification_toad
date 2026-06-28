@@ -162,7 +162,6 @@ def _estimate_age(
             return (
                 round(age, 3),
                 _human_duration(age),
-                "process_create_time (upper-bound: process may predate connection)",
             )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
@@ -265,7 +264,7 @@ def _gather_sockets(
         proc_key = (laddr_ip, laddr_port, norm_rip, norm_rport)
         extras = (tcp_extras if is_tcp else udp_extras).get(proc_key, {})
 
-        age_secs, age_human, age_method = _estimate_age(conn.pid, conn.fd, now)
+        age_secs, age_human, = _estimate_age(conn.pid, conn.fd, now)
 
         status = conn.status if conn.status else None
 
@@ -278,7 +277,6 @@ def _gather_sockets(
             "connection_age": {
                 "age_secs": age_secs,
                 "age_human": age_human,
-                "method": age_method,
             },
             "process": _enrich_process(conn.pid, conn.fd),
         }
