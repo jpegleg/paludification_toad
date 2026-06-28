@@ -1,0 +1,29 @@
+[package]
+name = "timbsd"
+version = "1.0.1"
+edition = "2024"
+authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
+license = "MIT"
+description = "controller for TLS certificate renewals"
+homepage = "https://carefuldata.com"
+repository = "https://github.com/jpegleg/paludificiation_toad"
+readme = "README.md"
+categories = ["configuration"]
+keywords = ["pki", "certificate-renewal", "pki-automation", "tls", "cert-automation"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+yaml_serde = "0.10.4"
+chrono = "0.4"
+gethostname = "1"
+openssl = "0.10"
+
+[target.'cfg(target_os = "openbsd")'.dependencies]
+pledge = "0.4"
+unveil = "0.3.2"
+
+[profile.release]
+opt-level = 3
+strip = true
+lto = true
+panic = "abort"
