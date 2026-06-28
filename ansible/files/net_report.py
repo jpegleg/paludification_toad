@@ -252,20 +252,16 @@ def _gather_sockets(
             continue
 
         proto = "tcp" if is_tcp else "udp"
-
         laddr_ip = conn.laddr.ip if conn.laddr else None
         laddr_port = conn.laddr.port if conn.laddr else None
         raddr_ip = conn.raddr.ip if conn.raddr else None
         raddr_port = conn.raddr.port if conn.raddr else None
-
         is_ipv6 = conn.family == socket.AF_INET6
         norm_rip = raddr_ip or ("::" if is_ipv6 else "0.0.0.0")
         norm_rport = raddr_port or 0
         proc_key = (laddr_ip, laddr_port, norm_rip, norm_rport)
         extras = (tcp_extras if is_tcp else udp_extras).get(proc_key, {})
-
-        age_secs, age_human, = _estimate_age(conn.pid, conn.fd, now)
-
+        age_secs, age_human = _estimate_age(conn.pid, conn.fd, now)
         status = conn.status if conn.status else None
 
         record: dict = {
