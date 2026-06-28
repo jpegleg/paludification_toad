@@ -28,5 +28,8 @@ TEMPLATErenew() {
   chmod 600 /opt/local/TEMPLATE/key.pem
 }
 
+tmpdir="$(date +%Y%m%d%H%M%S)_$RANDOM_$RANDOM"
+cd $tmpdir
 TEMPLATErenew
-rm cert.pem cert1.pem cert2.pem 2>/dev/null
+cd ..
+rm -rf $tmpdir
