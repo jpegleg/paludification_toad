@@ -1,0 +1,21 @@
+daemon:
+  interval_seconds: 333
+  jitter_max_hours: 33
+  connect_timeout_seconds: 33
+
+endpoints:
+  - host: TEMPLATE
+    port: 443
+    thresholds:
+      - days_before_expiry: 13
+        commands:
+          - "/root/TEMPLATE_certbot"
+
+      - days_before_expiry: 10
+        commands:
+          - "bash /root/TEMPLATE_wrap && rcctl restart TEMPLATEweb"
+
+      - days_before_expiry: 5
+        commands:
+          - "/root/TEMPLATE_certbot
+          - "bash /root/TEMPLATE_wrap && rcctl restart TEMPLATEweb"
