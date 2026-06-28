@@ -150,7 +150,6 @@ def _estimate_age(
             return (
                 round(age, 3),
                 _human_duration(age),
-                "proc_fd_ctime (lower-bound: time fd was last opened/dup'd)",
             )
         except (FileNotFoundError, PermissionError, OSError):
             pass
@@ -166,7 +165,7 @@ def _estimate_age(
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
-    return None, None, "unavailable (no owning process or access denied)"
+    return None, None
 
 
 def _enrich_process(pid: Optional[int], fd: Optional[int]) -> Optional[dict]:
