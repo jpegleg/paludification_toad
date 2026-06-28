@@ -626,9 +626,7 @@ def generate_report(
 
     except Exception:
         try:
-            out_fp.write(
-                f'\n, "_fatal_error": {
-                    json.dumps(EOR_INCOMPLETE)}\n}}\n')
+            out_fp.write(f'\n, "_fatal_error": {json.dumps(EOR_INCOMPLETE)}\n}}\n')
         except Exception:
             pass
     finally:
