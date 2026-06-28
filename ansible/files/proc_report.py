@@ -577,9 +577,7 @@ def generate_report(
                 )
 
             print(
-                f"[process_audit] Tracing {
-                    len(pids)} processes for {trace_duration}s "
-                "(snapshots will be collected in parallel during trace window)...",
+                f"[process_audit] Tracing {len(pids)} processes for {trace_duration}s ",
                 file=sys.stderr,
             )
 
