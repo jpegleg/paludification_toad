@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+CMDZ="$1"
+PROCNM="timbsd"
+skillo() {
+  pkill $PROCNM || pgrep $PROCNM && pkill -9 $PROCNM
+}
+
+
+if [ "$CMDZ" == "start" ]; then
+  pgrep $PROCNM ||
+    cd /root/ && /root/timbsd /etc/tim/policy.yaml -w > /var/log/tim.log 2>&1 &
+fi
+if [ "$CMDZ" == "restart" ]; then
+  skillo;
+  cd /root/ && /root/timbsd /etc/tim/policy.yaml -w > /var/log/tim.log 2>&1 &
+fi
+if [ "$CMDZ" == "stop" ]; then
+  skillo
+fi
