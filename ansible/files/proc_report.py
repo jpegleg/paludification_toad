@@ -654,7 +654,7 @@ def main():
     parser.add_argument("--compact", action="store_true", default=False,
                         help="Compact (non-indented) JSON output")
     parser.add_argument("--workers", type=int, default=0, metavar="N",
-                        help="Thread pool size (default: 2 × CPU count, max 32)")
+                        help="Thread pool size (default: 2 per CPU count, max 32)")
     args = parser.parse_args()
 
     generate_report(
