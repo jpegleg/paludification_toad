@@ -6,6 +6,7 @@ tar czvf toad.tgz \
   /root/timbsd \
   /etc/rc.d/tim \
   /etc/tim \
+  /opt/re3 \
   /etc/rc.d/gate \
   /etc/rc.d/*web \
   /etc/rc.d/re3 \
@@ -16,6 +17,7 @@ tar czvf toad.tgz \
   /opt/kiagateway \
   /opt/*bluejay/ \
   /usr/local/bin/*bluejay \
+  /usr/local/bin/re3 \
   /root/*wrap \
   /root/certbot* \
   /root/enforcer.sh \
