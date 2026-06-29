@@ -29,6 +29,7 @@ TEMPLATErenew() {
 }
 
 tmpdir="$(date +%Y%m%d%H%M%S)_$RANDOM_$RANDOM"
+mkdir $tmpdir || exit 1
 cd $tmpdir
 TEMPLATErenew
 cd ..
