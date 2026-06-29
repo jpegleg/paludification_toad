@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-net_report.py — Cross-platform TCP/UDP socket audit report generator.
+net_report.py - Cross-platform TCP/UDP socket audit report generator.
 
 Produces a JSON report of every TCP and UDP socket on the system.
 Works on Linux, macOS, FreeBSD, NetBSD, OpenBSD, and any other platform
