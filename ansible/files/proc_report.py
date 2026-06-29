@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-process_audit.py — Cross-platform process audit report generator.
+process_audit.py - Cross-platform process audit report generator.
 
 Usage:
   sudo python3 process_audit.py [options]
@@ -368,7 +368,6 @@ def _trace_process(pid: int, duration: float, interval: float = 0.1) -> dict:
     syscall_counts: collections.Counter = collections.Counter()
     cpu_samples: List[float] = []
     net_addrs_seen: Set[Tuple] = set()
-
     sc_path = f"/proc/{pid}/syscall" if IS_LINUX else None
     end_time = time.time() + duration
 
