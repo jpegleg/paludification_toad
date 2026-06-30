@@ -17,5 +17,5 @@ endpoints:
 
       - days_before_expiry: 5
         commands:
-          - "/root/TEMPLATE_certbot
+          - "/root/TEMPLATE_certbot"
           - "bash /root/TEMPLATE_wrap && rcctl restart TEMPLATEweb"
