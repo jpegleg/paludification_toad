@@ -16,6 +16,7 @@ use actix_session::{
 use actix_web::{
     cookie::{self, Key},
     get,
+    delete,
     middleware,
     middleware::Condition,
     web,
@@ -62,6 +63,7 @@ struct WebConfig {
 
 #[derive(Deserialize, Clone)]
 struct PageConfig {
+    cookie_forbidden: String,
     index_first_visit: String,
     index_returning_visit: Option<String>,
     session_age_gt_value: Option<String>,
@@ -467,49 +469,104 @@ fn required_ip_satisfied(
     }
 }
 
+#[delete("/session")]
+async fn logout(
+    req: HttpRequest,
+    info: web::Query<Age>,
+    state: web::Data<Arc<AppState>>,
+) -> actix_web::Result<NamedFile> {
+    let sess = &state.session;
+    if sess.pages.is_some() {
+        let pages = match sess.pages.as_ref() {
+            Some(pages) => pages,
+            None => {
+                return Err(actix_web::error::ErrorInternalServerError(
+                    "configuration unavailable",
+                ));
+            }
+        };
+        let threshold = match sess.age_value {
+            Some(age) => age as i32,
+            None => 0,
+        };
+        
+        if !required_header_satisfied(&req, &state.session.required_header) {
+             return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
+        }
+
+        if !required_ip_satisfied(
+            &req,
+            &state.session.required_ipv4,
+            &state.session.required_ipv6,
+        ) {
+            return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
+        }
+
+        if info.fage > threshold {
+            if sess.enabled {
+                let session = req.get_session();
+                let _ = session.purge();
+            }
+        }
+        return open_configured_file(&state.static_dir, &pages.index_first_visit).await
+    } else {
+        return open_configured_file(&state.static_dir, "/index.html").await
+    }
+}
+
 #[get("/session")]
 async fn newcook(
     req: HttpRequest,
     info: web::Query<Age>,
     state: web::Data<Arc<AppState>>,
 ) -> actix_web::Result<NamedFile> {
-    if !required_header_satisfied(&req, &state.session.required_header) {
-        return Err(actix_web::error::ErrorForbidden(
-            "Forbidden, your request was not authorized.",
-        ));
-    }
-
-    if !required_ip_satisfied(
-        &req,
-        &state.session.required_ipv4,
-        &state.session.required_ipv6,
-    ) {
-        return Err(actix_web::error::ErrorForbidden(
-            "Forbidden, your request was not authorized.",
-        ));
-    }
-
     let sess = &state.session;
-    let threshold = sess.age_value.unwrap() as i32;
-    let pages = sess.pages.as_ref().unwrap();
-
-    if info.fage > threshold {
-        if sess.enabled {
-            let session = req.get_session();
-            let counter = session.get::<i32>("counter").ok().flatten().unwrap_or(0) + 1;
-            let _ = session.insert("counter", counter);
+    if sess.pages.is_some() {
+        let pages = match sess.pages.as_ref() {
+            Some(pages) => pages,
+            None => {
+                return Err(actix_web::error::ErrorInternalServerError(
+                    "configuration unavailable",
+                ));
+            }
+        };
+        let threshold = match sess.age_value {
+            Some(age) => age as i32,
+            None => 0,
+        };
+        
+        if !required_header_satisfied(&req, &state.session.required_header) {
+            return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
         }
-        open_configured_file(
-            &state.static_dir,
-            pages.session_age_gt_value.as_deref().unwrap(),
-        )
-        .await
+
+        if !required_ip_satisfied(
+            &req,
+            &state.session.required_ipv4,
+            &state.session.required_ipv6,
+        ) {
+            return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
+        }
+
+        if info.fage > threshold {
+            if sess.enabled {
+                let session = req.get_session();
+                let counter = session.get::<i32>("counter").ok().flatten().unwrap_or(0) + 1;
+                let _ = session.insert("counter", counter);
+            }
+            open_configured_file(
+                &state.static_dir,
+                pages.session_age_gt_value.as_deref().unwrap(),
+            )
+            .await
+        } else {
+            open_configured_file(
+                &state.static_dir,
+                pages.session_age_lte_value.as_deref().unwrap(),
+            )
+            .await
+        }
     } else {
-        open_configured_file(
-            &state.static_dir,
-            pages.session_age_lte_value.as_deref().unwrap(),
-        )
-        .await
+        return open_configured_file(&state.static_dir, "index.html").await
     }
 }
 
@@ -684,7 +741,7 @@ async fn main() -> eyre::Result<()> {
     let runid = env::var("RUN_ID").unwrap_or("kiabluejaybsd".to_string());
 
     log::info!(
-        "{{\"event\":\"initialized version 0.1.702\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
+        "{{\"event\":\"initialized version 0.1.703\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
         readi,
         runid
     );
