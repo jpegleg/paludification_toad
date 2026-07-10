@@ -1,6 +1,6 @@
 [package]
 name = "kiabluejaybsd"
-version = "0.1.702"
+version = "0.1.703"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
@@ -14,7 +14,7 @@ categories = ["network-programming", "web-programming::http-server"]
 [dependencies]
 actix-web = { version = "4.13", features = ["openssl", "rustls"] }
 rustls = { version = "0.23" }
-actix-web-lab = "0.17"
+actix-web-lab = "0.26"
 actix-files = "0.6"
 log = "0.4"
 env_logger = "0.11"
