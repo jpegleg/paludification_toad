@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+
+CMDZ="$1"
+PROCNM="kiaproxy20"
+
+export LISTENER=0.0.0.0:3443
+export SERVERS=192.168.1.3:443,192.168.1.4:443 # change these to your server IP and ports
+export LB_ALGO=ordered # default algorithm, change to round-robin, least-conn, or sticky-clients algorithsm if needed
+
+skillo() {
+  pkill $PROCNM && pgrep $PROCNM && pkill -9 $PROCNM
+}
+
+if [ "$CMDZ" == "start" ]; then
+  touch /var/log/kiaproxy20.log
+  pgrep $PROCNM || cd /root && /root/kiaproxy20 > /var/log/kiaproxy20.log 2>&1 &
+fi
+if [ "$CMDZ" == "restart" ]; then
+  touch /var/log/kiaproxy20.log
+  skillo && cd /root && /root/kiaproxy20 > /var/log/kiaproxy20.log 2>&1 &
+fi
+if [ "$CMDZ" == "stop" ]; then
+  skillo
+fi
