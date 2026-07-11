@@ -1,0 +1,133 @@
+---
+
+- name: configure nodes
+  hosts: toads
+  tasks:
+
+  - name: add packages
+    copy:
+      src: files/packages.txt
+      dest: /root/packages.txt
+    tags: packages
+
+  - name: install packages
+    shell: 'pkg_add -l /root/packages.txt'
+    args:
+      executable: /bin/ksh
+    tags: toad
+
+  - name: upgrade all packages
+    shell: 'pkg_add -u'
+    args:
+      executable: /bin/ksh
+    tags: toad
+
+  - name: copy out SSH daemon config
+    copy:
+      src: files/sshd_config_template
+      dest: /etc/ssh/sshd_config
+    tags:
+    - ssh
+    - configs
+
+  - name: copy out kernel firewall (pf) config
+    copy:
+      src: files/pf.conf
+      dest: /etc/pf.conf
+    tags:
+    - pf
+    - configs
+
+  - name: copy out make_toad.sh
+    copy:
+      src: files/make_toad.sh
+      dest: /root/make_toad.sh
+    tags:
+    - toad
+    - configs
+    - maketoad
+
+  - name: copy out limits.py
+    copy:
+      src: files/limits.py
+      dest: /root/limits.py
+    tags:
+    - toad
+    - configs
+    - limits
+
+  - name: copy out disk_report.py
+    copy:
+      src: files/disk_report.py
+      dest: /root/disk_report.py
+    tags:
+    - toad
+    - configs
+    - disk
+
+  - name: copy out net_report.py
+    copy:
+      src: files/net_report.py
+      dest: /root/net_report.py
+    tags:
+    - toad
+    - configs
+    - net
+
+  - name: copy out proc_report.py
+    copy:
+      src: files/proc_report.py
+      dest: /root/proc_report.py
+    tags:
+    - toad
+    - configs
+    - proc
+
+  - name: setup server venv
+    shell: 'python3 -m venv venv'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+
+  - name: pip upgrade
+    shell: '/root/venv/bin/pip install --upgrade pip'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - pip
+
+  - name: pip install exception_logger
+    shell: '/root/venv/bin/pip install exception_logger'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - pip
+
+  - name: pip install psutil
+    shell: '/root/venv/bin/pip install psutil'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - pip
+
+  - name: set system limits
+    shell: '/root/venv/bin/python3 /root/limits.py'
+    args:
+      executable: /bin/ksh
+    tags:
+    - toad
+    - python
+    - venv
+    - limits
