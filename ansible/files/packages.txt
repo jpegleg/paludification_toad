@@ -1,11 +1,10 @@
 bash-5.3.9          GNU Bourne Again Shell
 bzip2-1.0.8p0       block-sorting file compressor, unencumbered
 certbot-5.5.0       client for certificate authorities using ACME protocols
-curl-8.20.0         transfer files with FTP, HTTP, HTTPS, etc.
 cvsps-2.1p3         generate patchsets from CVS repositories
 gettext-runtime-1.0 GNU gettext runtime libraries and programs
 git-2.53.0          distributed version control system
-gitwrapper-0.125    invoke an appropriate Git repository server
+gitwrapper-0.126    invoke an appropriate Git repository server
 libb2-0.98.1v0      library providing BLAKE2b, BLAKE2s, BLAKE2bp, BLAKE2sp
 libffi-3.5.2p0      Foreign Function Interface
 libiconv-1.19       character set conversion library
@@ -42,10 +41,9 @@ py3-urllib3-1.26.20p0 HTTP library for Python
 py3-zopecomponent-6.0p1 component architecture from Zope
 py3-zopeevent-5.0p0 very basic event publishing system from Zope
 py3-zopeinterface-7.2p0 object interface infrastructure from Zope
-python-3.13.13      interpreted object-oriented programming language
-quirks-7.194        exceptions to pkg_add rules
+python-3.13.14      interpreted object-oriented programming language
 sqlite3-3.51.3      embedded SQL implementation
 updatedb-0p0        pkg_add speed up cache
-vim-9.2.357-python3 vi clone with many additional features
+vim-9.2.738-python3 vi clone with many additional features
 wget-1.25.0p0       retrieve files from the web via HTTP, HTTPS and FTP
 xz-5.8.3            library and tools for XZ and LZMA compressed files
