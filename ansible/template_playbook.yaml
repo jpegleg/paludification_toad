@@ -93,7 +93,7 @@
     - venv
 
   - name: pip upgrade
-    shell: '/root/venv/bin/python3 pip install --upgrade pip'
+    shell: '/root/venv/bin/pip install --upgrade pip'
     args:
       executable: /bin/ksh
     tags:
@@ -103,7 +103,7 @@
     - pip
 
   - name: pip install exception_logger
-    shell: '/root/venv/bin/python3 pip install exception_logger'
+    shell: '/root/venv/bin/pip install exception_logger'
     args:
       executable: /bin/ksh
     tags:
@@ -113,7 +113,7 @@
     - pip
 
   - name: pip install psutil
-    shell: '/root/venv/bin/python3 pip install psutil'
+    shell: '/root/venv/bin/pip install psutil'
     args:
       executable: /bin/ksh
     tags:
