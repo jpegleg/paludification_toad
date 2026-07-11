@@ -1,4 +1,4 @@
-output "web_ip1" {
-  value       = vultr_instance.toad.main_ip
-  description = "Paludification Toad IP."
+output "gtd1" {
+  value       = vultr_instance.gtd1.main_ip
+  description = "gtd1 IP address"
 }
