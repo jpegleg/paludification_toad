@@ -2,7 +2,7 @@
 
 Paludification toad is a template/recipe for an OpenBSD web server that uses Go `kiamagpie` or Actix web servers such as the included `kiabluejaybsd` (morphobsd), Actix leveraging Unveil and Pledge for granular application isolation instead of OCI container isolation. The Actix template also has cookies, kiamagpie does not.
 
-While the concept is that all of this software and configuration is a single host, it can also be split out and distributed easily and effectively. We might scale out horizontally by having 2 kiagatewaybsd2 + kiaproxybsd + redirectrixbsd servers that route traffic to 2 kiabluejay servers, for example. There are some anisble playbook references for some of these designs being worked on. But generally when we refer to "a toad" we are referring to one of these OpenBSD servers with the OpenBSD kiastack and some additional support tools and designs.
+While the concept is that all of this software and configuration is a single host, it can also be split out and distributed easily and effectively. We might scale out horizontally by having 2 kiagatewaybsd2 + kiaproxybsd + redirectrixbsd servers that route traffic to 2 morphobsd servers, for example. There are some anisble playbook references for some of these designs being worked on. But generally when we refer to "a toad" we are referring to one of these OpenBSD servers with the OpenBSD kiastack and some additional support tools and designs.
 
 The toad also uses the in-kernel pf firewall and a version of the `kiagateway` service.
 
