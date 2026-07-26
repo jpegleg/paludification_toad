@@ -12,7 +12,6 @@ use uuid::Uuid;
 use pledge::pledge_promises;
 use unveil::unveil;
 
-const MAX_HTTP_HEADERS: usize = 32 * 1024;
 const MAX_TLS_INITIAL: usize = 32 * 1024;
 const MAX_TLS_RECORDS_TO_SCAN: usize = 8;
 const READ_CHUNK: usize = 1024;
