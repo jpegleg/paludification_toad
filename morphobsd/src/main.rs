@@ -72,7 +72,6 @@ struct PageConfig {
 
 #[derive(Deserialize, Clone)]
 struct SessionSecureConfig {
-    key_path: String,
 }
 
 #[derive(Deserialize, Clone)]
@@ -256,7 +255,6 @@ struct ResolvedSession {
     ttl_hours: i64,
     secure_cookie: bool,
     age_value: Option<i16>,
-    signing_key: Option<Vec<u8>>,
     required_header: Option<HeaderRequirement>,
     required_ipv4: Option<Vec<Ipv4Cidr>>,
     required_ipv6: Option<Vec<Ipv6Cidr>>,
@@ -341,15 +339,6 @@ fn validate_config(config: &Config) -> Result<(), String> {
             missing.join(", ")
         ));
     }
-    if let Some(sec) = &sess.secure
-        && !Path::new(&sec.key_path).is_file()
-    {
-        return Err(format!(
-            "`session.secure.key_path` '{}' does not exist or is not a file.",
-            sec.key_path
-        ));
-    }
-
     if let Some(required) = &sess.required {
         if let Some(ipv4) = &required.ipv4 {
             if ipv4.addresses.is_empty() {
@@ -397,13 +386,11 @@ fn validate_config(config: &Config) -> Result<(), String> {
     Ok(())
 }
 
-fn load_signing_key(path: &str) -> Vec<u8> {
-    let mut f =
-        File::open(path).unwrap_or_else(|e| panic!("cannot open signing key '{}': {}", path, e));
-    let mut pem_bytes = Vec::new();
-    f.read_to_end(&mut pem_bytes)
-        .unwrap_or_else(|e| panic!("cannot read signing key '{}': {}", path, e));
-    pem_bytes
+fn load_signing_key(path: &str) -> [u8; 64] {
+    let mut f = File::open(path).unwrap_or_else(|e| panic!("cannot open signing key '{}': {}", path, e ));
+    let mut c_bytes = [0; 64];
+    f.read_exact(&mut c_bytes).unwrap_or_else(|e| panic!("cannot read signing key '{}': {}", path, e));
+    c_bytes
 }
 
 fn required_header_satisfied(req: &HttpRequest, requirement: &Option<HeaderRequirement>) -> bool {
@@ -489,7 +476,7 @@ async fn logout(
             Some(age) => age as i32,
             None => 0,
         };
-        
+
         if !required_header_satisfied(&req, &state.session.required_header) {
              return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
         }
@@ -534,7 +521,7 @@ async fn newcook(
             Some(age) => age as i32,
             None => 0,
         };
-        
+
         if !required_header_satisfied(&req, &state.session.required_header) {
             return open_configured_file(&state.static_dir, &pages.cookie_forbidden).await
         }
@@ -741,7 +728,7 @@ async fn main() -> eyre::Result<()> {
     let runid = env::var("RUN_ID").unwrap_or("kiabluejaybsd".to_string());
 
     log::info!(
-        "{{\"event\":\"initialized version 0.1.703\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
+        "{{\"event\":\"initialized version 0.1.704\",\"time\":\"{}\",\"run_id\":\"{}\"}}",
         readi,
         runid
     );
@@ -790,11 +777,6 @@ async fn main() -> eyre::Result<()> {
         .collect();
 
     let raw_sess = &config.web.session;
-    let signing_key: Option<Vec<u8>> = raw_sess
-        .secure
-        .as_ref()
-        .map(|s| load_signing_key(&s.key_path));
-
     let required_ipv4: Option<Vec<Ipv4Cidr>> = raw_sess
         .required
         .as_ref()
@@ -831,7 +813,6 @@ async fn main() -> eyre::Result<()> {
         },
         secure_cookie: raw_sess.secure_cookie,
         age_value: raw_sess.value,
-        signing_key: signing_key.clone(),
         required_header: raw_sess.required.as_ref().and_then(|r| r.header.clone()),
         required_ipv4,
         required_ipv6,
@@ -858,10 +839,10 @@ async fn main() -> eyre::Result<()> {
     let session_ttl_hours = resolved_session.ttl_hours;
     let secure_cookie = resolved_session.secure_cookie;
     let workers = config.workers.unwrap_or(2);
-    let cookie_key = signing_key
-        .map(|bytes| Key::from(&bytes))
-        .unwrap_or_else(|| Key::from(&[0; 64]));
-
+    let mut cookie_key = Key::from(&[0; 64]);
+    if session_enabled {
+        cookie_key = Key::from(&load_signing_key("hmac.bin"));
+    }
     let mut server = HttpServer::new(move || {
         let mut custom_default_headers = middleware::DefaultHeaders::new();
         for (name, value) in &custom_headers {
