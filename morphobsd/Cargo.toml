@@ -1,6 +1,6 @@
 [package]
 name = "kiabluejaybsd"
-version = "0.1.704"
+version = "0.1.706"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
@@ -12,20 +12,20 @@ keywords = ["hybrid-pqc", "web-server", "tls", "openbsd", "pledge-security"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [dependencies]
-actix-web = { version = "4.13", features = ["openssl", "rustls"] }
+actix-web = { version = "4.18", features = ["openssl", "rustls"] }
 rustls = { version = "0.23" }
 actix-web-lab = "0.26"
 actix-files = "0.6"
 log = "0.4"
 env_logger = "0.11"
 eyre = { version = "0.6", default-features = false, features = ["auto-install", "track-caller"] }
-tokio = { version = "1.52.3", features = ["time", "rt", "macros"] }
+tokio = { version = "1.54.1", features = ["time", "rt", "macros"] }
 chrono = "0.4"
 actix-session = { version = "0.7.2", features = ["cookie-session"] }
 cookie = "0.16"
-serde = { version = "1.0.228", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_yml = "0.0.12"
-openssl = { version = "0.10.80", features = ["v110"] }
+openssl = { version = "0.10.82", features = ["v110"] }
 pledge = "0.4.2"
 unveil = "0.3.2"
 
