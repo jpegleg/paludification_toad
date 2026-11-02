@@ -1,6 +1,6 @@
 [package]
 name = "timbsd"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
@@ -13,7 +13,7 @@ keywords = ["pki", "certificate-renewal", "pki-automation", "tls", "cert-automat
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-yaml_serde = "0.10.4"
+yaml_serde = "0.10.7"
 chrono = "0.4"
 gethostname = "1"
 openssl = "0.10"
