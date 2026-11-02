@@ -1,6 +1,6 @@
 [package]
 name = "kiaproxybsd"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
@@ -12,9 +12,9 @@ categories = ["network-programming"]
 keywords = ["tcp", "high-availability", "ha", "tls-passthrough", "proxy"]
 
 [dependencies]
-tokio = { version = "1.52.3", features = ["net", "sync", "rt-multi-thread", "io-util", "time", "macros"] }
+tokio = { version = "1.54.1", features = ["net", "sync", "rt-multi-thread", "io-util", "time", "macros"] }
 chrono = "0.4.45"
-uuid = { version = "1.23.4", features = ["v4"] }
+uuid = { version = "1.29.0", features = ["v4"] }
 unveil = "0.3.2"
 pledge = "0.4.2"
-signal-hook= "0.4.4"
+signal-hook= "0.4.6"
