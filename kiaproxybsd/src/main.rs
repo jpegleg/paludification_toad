@@ -516,7 +516,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(Mutex::new(BalancerState::new(servers.len())));
 
     log_init(&format!(
-        "kiaproxy v0.2.0 TCP load balancer listening on \
+        "kiaproxy v0.2.1 TCP load balancer listening on \
          {listener_address} with LB_ALGO={algorithm} and backends {:?}",
         servers
     ));
