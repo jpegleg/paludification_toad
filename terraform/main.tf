@@ -7,7 +7,7 @@ resource "vultr_instance" "gtd1" {
     hostname = "gtd1"
     plan = "vc2-1c-1gb"
     region = "atl"
-    os_id = 2772
+    os_id = 2839
     ssh_key_ids = ["${vultr_ssh_key.enre.id}"]
     label = "gtd1"
 }
