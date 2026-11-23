@@ -1,6 +1,6 @@
 [package]
 name = "kiabluejaybsd"
-version = "0.1.706"
+version = "0.1.707"
 edition = "2024"
 authors = ["Keegan Bowen <carefuldata@protonmail.com>"]
 license = "MIT"
@@ -12,7 +12,7 @@ keywords = ["hybrid-pqc", "web-server", "tls", "openbsd", "pledge-security"]
 categories = ["network-programming", "web-programming::http-server"]
 
 [dependencies]
-actix-web = { version = "4.18", features = ["openssl", "rustls"] }
+actix-web = { version = "4.20", features = ["openssl", "rustls"] }
 rustls = { version = "0.23" }
 actix-web-lab = "0.26"
 actix-files = "0.6"
